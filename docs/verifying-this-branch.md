@@ -113,6 +113,38 @@ untested and cannot be tested here.
 The probe was removed after the measurement, and so was the temporary
 `TEMP_FORCE_HDR`/`TEMP_NO_TONEMAP` scaffolding.
 
+## The failure panel was checked on screen
+
+When playurl fails the player area used to render nothing, leaving only a
+two-second toast. It now shows the reason over a dimmed cover with a retry
+button.
+
+Reaching that state normally needs a video that actually fails, and neither
+`simctl openurl` nor `idb open` can deliver a link to the app here: the bundle
+declares no `associated-domains` entitlement and no entitlements file at all, so
+iOS hands every https URL to Safari. Driving the UI to a dead video is not
+possible either.
+
+So it was checked with a temporary launch hook
+(`--dart-define=TEMP_SHOW_PLAY_ERROR`) that pushed `/videoV` with a dead bvid
+after six seconds. On screen:
+
+```text
+视频不存在或已被删除
+      [ 重试 ]
+```
+
+with the info panel, comments and UP block loading normally around it - i.e. the
+failure is confined to the player area, which is the intent.
+
+Two mistakes were made getting there, both in the hook rather than the product:
+omitting `videoType` produced a Null-not-a-subtype-of-VideoType crash, and
+omitting `heroTag` produced the same for String. The page asserts those
+arguments, so a wrong hook fails loudly instead of rendering something
+plausible.
+
+The hook was removed afterwards; `lib/pages/main/view.dart` is unchanged.
+
 ## Why the QA_PICK line matters
 
 A frame can look correct while the player is on the wrong rendition: 360p,
