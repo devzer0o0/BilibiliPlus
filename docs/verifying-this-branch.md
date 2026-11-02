@@ -21,8 +21,34 @@ Last run: all four passed.
 flutter test                                  # unit suite
 tool/verify_release_constraints.sh <Runner.app>   # store/ABI/diagnostics
 tool/hdr_pick_check.sh <bvid> <qn> <tonemap>  # one rendition case
+tool/playback_check.sh <bvid> <qn> <tone> <auto>  # real playback + frame diff
 tool/hdr_regression.sh <bvid> <qn> <tonemap>  # capture + classify frames
 tool/check_player_frame.py <png...>           # black / green / ok
+```
+
+## HDR actually plays, and the gate is what protects it
+
+Measured with `tool/playback_check.sh BV1b24y1w73N 125 <tonemap> 1`:
+
+| Tone mapping | Logged pick | Frames | Reading |
+| --- | --- | --- | --- |
+| on | `picked=125 codec=HEVC` | 3 distinct, RGB ok, HUD showed FPS 49 | 10-bit HDR decoded and rendered correctly |
+| off | `picked=120 codec=AVC` | 3 distinct, RGB ok | the gate refused to fetch 125 at all |
+
+The important part is the second row. With the switch off, 125 is never
+requested - `Pref.defaultVideoQa` becomes 127, the server returns the ladder, and
+`_findAvailableVideoQuality` settles on 120. So the green screen cannot occur
+because **the 10-bit stream never plays**; it is not being rendered wrongly.
+
+That also means the simulator cannot reproduce the original bug directly: to see
+green you would have to force 125 through while tone mapping is off, which the
+gate prevents by design. Reproducing it would need a build with the gate
+temporarily disabled, or a device.
+
+```text
+playback: QA_PICK prefer=125 picked=125 codec=HEVC
+frames:   f0 e5d15911  f1 df22ad6a  f2 634dc4a7   (all different = playing)
+colour:   RGB(41,30,17) RGB(71,55,33)  -> ok, not green
 ```
 
 ## Why the QA_PICK line matters
