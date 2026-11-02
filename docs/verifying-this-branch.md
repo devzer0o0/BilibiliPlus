@@ -79,17 +79,43 @@ So the gate **is** evaluated - exactly once, while all three conditions are
 still false - and the `Obx` never rebuilds afterwards. That is why the player
 widget is never constructed even though playback works.
 
-Two readings, not yet distinguished:
+A third round found the cause. Instrumenting `setDataSource` showed its
+`onInit` callback is never reached, because of a guard inside it:
 
-1. the `Obx` does not track the Rx that flips these values (they are read via
-   `videoDetailController`, so a separate subscription may own them), or
-2. the widget that owns this `Obx` is disposed before playback starts and the
-   frames on screen come from a different subtree.
+```dart
+if (_playerCount == 0) {
+  return;              // skips onInit?.call()
+}
+```
 
-Either way the practical consequence stands: **the output-resize path is not
-observably wired into playback in this build.** Its logic is unit tested
+`_playerCount` is bumped in `PlPlayerController.getInstance()` and decremented
+in the dispose path. When it reads 0 the method bails before
+`_createVideoController` and before `onInit?.call()`, so
+`videoDetailController.videoState` stays `false` forever. The `Obx` in
+`plPlayer()` therefore never rebuilds, `PLVideoPlayer` is never constructed, and
+`NativeVideoSurface` never runs.
+
+Role of each flag in the gate:
+
+| Flag | Type | Tracked by Obx |
+| --- | --- | --- |
+| `videoState` | `RxBool` | yes - but it is never set to true on this path |
+| `autoPlay` | getter returning `bool` from `_autoPlay` | **no** - plain bool read |
+
+So even if `videoState` did flip, `autoPlay` would not be a reactive dependency.
+
+**The practical consequence stands**: the output-resize path is not wired into
+playback in this build. Its logic is unit tested
 (`video_output_size_test.dart`, `video_output_resize_test.dart`), but the
-wiring is unverified.
+wiring is unreachable.
+
+This is upstream structure rather than something the branch introduced:
+`plPlayer()`, `setDataSource` and the `_playerCount` guard are original code;
+the branch only adds the `resizeVideoOutput` argument.
+
+Whether `_playerCount == 0` is a real defect or an expected state in this launch
+sequence is **not decided here** - deciding it needs a widget test that mounts
+the page with a live controller.
 
 Note this is pre-existing structure, not something this branch introduced:
 `plPlayer()` and its `Obx` are unchanged upstream code except for the
