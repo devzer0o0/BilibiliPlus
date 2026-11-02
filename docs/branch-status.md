@@ -12,10 +12,10 @@ iOS only, targeting iPhone Air (iPhone18,4). Bundle id unchanged at
 
 | Metric | Value |
 | --- | --- |
-| commits on branch | 51 |
-| lib files changed | 16 (+466 / -97) |
-| test files | 24 |
-| tests | 148, all passing |
+| commits on branch | 66 |
+| lib files changed | 16 (+501 / -102) |
+| test files | 28 |
+| tests | 169, all passing |
 
 ## Functional changes
 
