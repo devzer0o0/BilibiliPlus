@@ -45,3 +45,23 @@ never runs. Everything below is therefore unverified here:
 Those were verified earlier on an iPhone Air (see
 [ios-av1-adaptation.md](ios-av1-adaptation.md)); HDR there still needs
 re-checking with the tone-mapping switch on.
+
+## Why the attached iPhone still cannot be driven from the CLI
+
+`xcrun devicectl` exposes a lot, but not enough to run a test unattended:
+
+| Capability | Present | Usable here |
+| --- | --- | --- |
+| `capture screenshot` | yes | yes - works while the screen is on |
+| `process launch` | yes | **no** - needs the device unlocked |
+| `remote.hid.digitizer` | advertised | **no CLI subcommand** |
+| `remote.hid.button` | advertised | **no CLI subcommand** |
+| `device simulate` | biometrics only | no wake/sleep |
+
+`devicectl device --help` lists no HID subcommand, and neither `idb`
+(simulators only) nor `pymobiledevice3` is installed. So an attached phone can
+be screenshotted but not unlocked or tapped from this machine, which is why the
+hardware checks above need a person to unlock the device once.
+
+A locked device answers `process launch` with
+`FBSOpenApplicationErrorDomain error 7 (BSErrorCodeDescription = Locked)`.
