@@ -19,6 +19,12 @@ abstract final class Update {
   // 检查更新
   static Future<void> checkUpdate([bool isAuto = true]) async {
     if (kDebugMode) return;
+    if (BuildConfig.buildTime <= 0) {
+      if (!isAuto) {
+        SmartDialog.showToast('本地构建未写入构建时间，已跳过更新检查');
+      }
+      return;
+    }
     SmartDialog.dismiss();
     try {
       final res = await Request().get(
