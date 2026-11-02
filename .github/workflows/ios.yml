@@ -43,6 +43,9 @@ jobs:
           chmod 755 build/ios/iphoneos/Runner.app/Frameworks/Avcodec.framework/Avcodec
           plutil -replace MinimumOSVersion -string 15.0 \
             build/ios/iphoneos/Runner.app/Frameworks/Avcodec.framework/Info.plist
+          # Fail the build if the bundle id drifted, the AV1 ABI changed, or
+          # temporary diagnostics leaked into the release binary.
+          tool/verify_release_constraints.sh build/ios/iphoneos/Runner.app
           ln -sf ./build/ios/iphoneos Payload
           # make AltSign happy...
           find Payload/Runner.app/Frameworks -type d -name "*.framework" -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \;
