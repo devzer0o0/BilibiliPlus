@@ -981,9 +981,10 @@ class HeaderControlState extends State<HeaderControl>
                       },
                       // 可能包含会员解锁画质；HDR/杜比视界暂不可选，
                       // 10-bit HLG 在 8-bit 渲染通路上会显示为绿屏。
-                      enabled:
-                          availableQa.contains(item.quality) &&
-                          VideoUtils.isSupportedVideoQuality(item.quality),
+                      enabled: VideoUtils.isQualitySelectable(
+                        item.quality,
+                        availableQa,
+                      ),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 20,
                       ),
@@ -993,16 +994,19 @@ class HeaderControlState extends State<HeaderControl>
                               Icons.done,
                               color: theme.colorScheme.primary,
                             )
-                          : VideoUtils.isSupportedVideoQuality(item.quality)
-                          ? Text(
-                              item.format!,
-                              style: subTitleStyle,
-                            )
                           : Text(
-                              '暂不支持',
-                              style: subTitleStyle.copyWith(
-                                color: theme.colorScheme.outline,
+                              VideoUtils.qualityRowLabel(
+                                item.quality,
+                                item.format,
+                                '暂不支持',
                               ),
+                              style: VideoUtils.isSupportedVideoQuality(
+                                item.quality,
+                              )
+                                  ? subTitleStyle
+                                  : subTitleStyle.copyWith(
+                                      color: theme.colorScheme.outline,
+                                    ),
                             ),
                     );
                   },

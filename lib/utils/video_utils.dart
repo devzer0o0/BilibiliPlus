@@ -194,6 +194,26 @@ abstract final class VideoUtils {
       isSupportedVideoQuality(quality) &&
       (HdrSupport.allowsHdrQuality || !isTenBitCodec(codecs));
 
+  /// Whether a row in the in-player quality sheet can be chosen.
+  ///
+  /// Two conditions: the server actually offered the rung for this video, and
+  /// the render path can draw it. The second check is what hides HDR/Dolby
+  /// Vision, whose 10-bit streams show up green through the 8-bit texture.
+  static bool isQualitySelectable(int? quality, Set<int> available) =>
+      quality != null &&
+      available.contains(quality) &&
+      isSupportedVideoQuality(quality);
+
+  /// The trailing label for a quality row.
+  ///
+  /// Streams the render path cannot draw get [unsupportedLabel] instead of
+  /// their own description, so the row reads as unavailable rather than broken.
+  static String qualityRowLabel(
+    int? quality,
+    String? format,
+    String unsupportedLabel,
+  ) => isSupportedVideoQuality(quality) ? (format ?? '') : unsupportedLabel;
+
   /// Picks the entry to play from the variants of one quality id.
   ///
   /// Prefers the entry matching the requested codec, then any renderable
