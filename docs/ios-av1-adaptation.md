@@ -7,6 +7,26 @@ Date: 2026-11-02.
 - This branch targets iOS and iPhone Air only. `android/`, `linux/`, `macos/` and `windows/` platform targets are removed; shared Dart code retains platform guards where removing them would add risk.
 - Builds use Flutter 3.47.9 and the existing `com.example.pilipalax` bundle id so updating preserves the app data container and Hive settings.
 
+## Release constraints
+
+Three properties must hold for every shipped build. `tool/verify_release_constraints.sh`
+asserts all of them and runs in CI after the AV1 framework is injected:
+
+| Constraint | Check | Last observed |
+| --- | --- | --- |
+| Bundle id stays `com.example.pilipalax` | `Info.plist` | passes |
+| AV1 framework ABI unchanged | `otool -L` shows 61.3.100 | passes |
+| AV1 exports unchanged | `nm -gU` counts 359 | passes |
+| No temporary diagnostics shipped | AOT snapshot has no `QA_PICK`, `prefer=`, `picked=` | passes |
+
+`QA_PICK` is a debug-only line in `VideoUtils.findTargetVideo` that records
+which rendition the player selected. It is wrapped in `kDebugMode`, which the
+AOT compiler folds away; the check above confirms that on a real release build
+rather than trusting the optimisation.
+
+The label "diagnostic residue" only refers to this repo's markers. `DIAGNOSTICS`
+and `DIAG_REC` strings in the binary come from the bundled SQL keyword tables.
+
 ## Update prompt
 
 `BuildConfig.buildTime` is a compile-time define. A custom build without `pili.time` has value `0`, so `Update.checkUpdate` always treats the latest GitHub release as newer. The build must pass:
