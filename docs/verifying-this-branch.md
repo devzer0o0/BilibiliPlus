@@ -36,15 +36,35 @@ to tell which stream actually played. It is compiled out of release builds and
 ## What still needs a physical device
 
 The simulator forces `enableHardwareAcceleration = false`, so VideoToolbox
-never runs. Everything below is therefore unverified here:
+never runs. Unverified here:
 
 - 4K/8K AV1 hardware decode
 - HDR arriving as `p010` on the hardware path (the original green screen)
-- the native output-resize path, which requires `hwdec != null`
 
 Those were verified earlier on an iPhone Air (see
 [ios-av1-adaptation.md](ios-av1-adaptation.md)); HDR there still needs
 re-checking with the tone-mapping switch on.
+
+## Output resize: verified in the simulator
+
+Auto-play must be on for any of this to run (see below). With
+`SEED_AUTOPLAY=1`, instrumenting `NativeVideoSurface` showed the resize
+actually happening:
+
+```text
+SURF rect = Rect.fromLTRB(0.0, 0.0, 0.0, 0.0)          <- before the first frame
+SURF rect = Rect.fromLTRB(0.0, 0.0, 1080.0, 1920.0)    <- source size
+SURF SETSIZE 1001x1779                                 <- request sent to native
+SURF rect = Rect.fromLTRB(0.0, 0.0, 1001.0, 1779.0)    <- native confirmed
+```
+
+The 1080x1920 source became a 1001x1779 buffer. That matches the fit maths: the
+portrait player is about 333.7 pt wide, so the contain ratio is
+`333.7 * 3 / 1080 = 0.9269`, and `1080 * 0.9269 = 1001`.
+
+So the path is wired and does apply a resize - it simply never executed in the
+earlier runs because playback had not started. `hwdec` is non-null whenever
+`Pref.enableHA` is true (the default), which is what the gate requires.
 
 ## Open question: PLVideoPlayer does not appear to build
 
