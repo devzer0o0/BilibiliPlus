@@ -96,6 +96,32 @@ framework is committed (`ios/av1/Avcodec`), so no external download is needed.
 Local signed builds keep using `tool/build_ios_av1.sh`, which performs the same
 swap plus a real identity/provisioning-profile signature.
 
+## Continuous-playback evidence (iPhone Air, iOS 27.2)
+
+Instrumented builds 5592/5594 carried temporary `Utils.reportError` probes that
+wrote decoder state into `Documents/.pili_logs.json`; they were removed again
+before the shipped build (5595). A 36-minute AV1 4K session reported:
+
+```text
+DIAG vparams pixfmt=videotoolbox hw=nv12 3840x2160 hwdec=videotoolbox
+DIAG tick pos=30s   hwdec=videotoolbox pixfmt=videotoolbox out=3840x2160
+DIAG tick pos=1530s hwdec=videotoolbox pixfmt=videotoolbox out=3840x2160
+DIAG tick pos=2130s hwdec=videotoolbox pixfmt=videotoolbox out=3840x2160
+DIAG lifecycle=inactive hwdec=videotoolbox pixfmt=videotoolbox
+DIAG lifecycle=resumed  hwdec=videotoolbox pixfmt=videotoolbox
+DIAG lifecycle=hidden   hwdec=videotoolbox pixfmt=videotoolbox
+DIAG lifecycle=paused   hwdec=videotoolbox pixfmt=videotoolbox
+DIAG output rect=1260x709 source=3840x2160
+```
+
+- `hwdec-current` stayed `videotoolbox` in every sample and across
+  background → foreground plus danmaku toggles: no software fallback.
+- `DIAG output rect=1260x709 source=3840x2160` confirms #3088 resizes the native
+  output to the fitted area instead of keeping a 3840x2160 texture (the
+  1260x665..709 band is expected for 16:9 in the portrait player).
+- The device stayed on the charger (`ExternalConnected=1`), so the battery
+  percentage is not a usable heat proxy; no frame showed brightness dimming.
+
 ## Verification checklist
 
 1. Playback info shows `codec: av1` (default on iOS) or `hevc` and `hwdec: videotoolbox`.
