@@ -3,7 +3,11 @@
 #
 #   tool/playback_check.sh <bvid> <quality> <tonemap> <autoplay>
 set -uo pipefail
-BVID="${1:?usage: playback_check.sh <bvid> <quality> <tonemap> <autoplay>}"
+if [ $# -lt 1 ]; then
+  echo "usage: playback_check.sh <bvid> [quality] [tonemap] [autoplay]" >&2
+  exit 2
+fi
+BVID="$1"
 QUALITY="${2:-127}"
 TONEMAP="${3:-0}"
 AUTOPLAY="${4:-1}"

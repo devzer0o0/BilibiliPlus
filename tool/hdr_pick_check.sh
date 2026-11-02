@@ -2,7 +2,11 @@
 # Prove which rendition the player actually selects, via the QA_PICK log line.
 #   tool/hdr_pick_check.sh <bvid> <quality> <tonemap>
 set -uo pipefail
-BVID="${1:?usage: hdr_pick_check.sh <bvid> <quality> <tonemap>}"
+if [ $# -lt 1 ]; then
+  echo "usage: hdr_pick_check.sh <bvid> [quality] [tonemap]" >&2
+  exit 2
+fi
+BVID="$1"
 QUALITY="${2:-127}"
 TONEMAP="${3:-0}"
 SIM="${SIM_UDID:-3D5AE91D-601D-4D37-85A1-C8F200A83FEE}"
@@ -51,4 +55,11 @@ PY
 sleep 18
 kill $LOGPID 2>/dev/null
 echo "quality=$QUALITY tonemap=$TONEMAP"
-grep -o 'QA_PICK[^"]*' "$LOG" | tail -2 || echo "  (no QA_PICK captured)"
+if HIT=$(grep -o 'QA_PICK[^"]*' "$LOG" | tail -2) && [ -n "$HIT" ]; then
+  echo "$HIT"
+else
+  # No log line means the measurement did not happen - callers must not read
+  # that as success.
+  echo "  (no QA_PICK captured)" >&2
+  exit 1
+fi
