@@ -1,5 +1,8 @@
 # Verifying this branch
 
+For the overall picture - what changed, what is proven, and what is explicitly
+not - see [branch-status.md](branch-status.md).
+
 One command runs everything that can be checked without a physical device:
 
 ```sh
