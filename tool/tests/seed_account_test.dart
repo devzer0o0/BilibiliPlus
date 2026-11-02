@@ -12,6 +12,7 @@ import 'package:PiliPlus/models/common/account_type.dart';
 import 'package:PiliPlus/models/user/info.dart';
 import 'package:PiliPlus/utils/accounts/account.dart';
 import 'package:PiliPlus/utils/storage.dart';
+import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:path/path.dart' as p;
@@ -63,6 +64,23 @@ void main() {
           (jsonDecode(File(navFile).readAsStringSync()) as Map)
               .cast<String, dynamic>();
       await userInfoBox.put('userInfoCache', UserInfoData.fromJson(nav));
+    }
+
+    // Optional: force a stored preference so playback scenarios can be driven
+    // without walking the settings UI.
+    final qa = Platform.environment['SEED_DEFAULT_QUALITY'];
+    if (qa != null && qa.isNotEmpty) {
+      await GStorage.setting.put(
+        SettingBoxKey.defaultVideoQa,
+        int.parse(qa),
+      );
+    }
+    final toneMap = Platform.environment['SEED_TONEMAP_HDR'];
+    if (toneMap != null && toneMap.isNotEmpty) {
+      await GStorage.setting.put(
+        SettingBoxKey.enableToneMappedHdr,
+        toneMap == '1',
+      );
     }
 
     // ignore: avoid_print
