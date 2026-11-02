@@ -228,7 +228,7 @@ SettingsModel getBanWordModel({
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          constraints: Style.dialogFixedConstraints,
+          constraints: Style.dialogFixedConstraintsFor(context),
           title: Text(title),
           content: Column(
             mainAxisSize: MainAxisSize.min,

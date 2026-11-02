@@ -1523,7 +1523,7 @@ class VideoDetailController extends GetxController
     showDialog(
       context: Get.context!,
       builder: (context) => AlertDialog(
-        constraints: Style.dialogFixedConstraints,
+        constraints: Style.dialogFixedConstraintsFor(context),
         title: const Text('播放地址'),
         content: Column(
           spacing: 20,

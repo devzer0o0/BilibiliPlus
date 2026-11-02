@@ -67,7 +67,7 @@ class _AboutPageState extends State<AboutPage> {
   void _showDialog() => showDialog(
     context: context,
     builder: (context) => AlertDialog(
-      constraints: Style.dialogFixedConstraints,
+      constraints: Style.dialogFixedConstraintsFor(context),
       content: TextField(
         autofocus: true,
         onSubmitted: (value) {

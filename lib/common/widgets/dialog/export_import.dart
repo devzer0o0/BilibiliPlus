@@ -157,7 +157,7 @@ void importFromInput<T>(
     context: context,
     builder: (context) => AlertDialog(
       title: Text('输入$title'),
-      constraints: Style.dialogFixedConstraints,
+      constraints: Style.dialogFixedConstraintsFor(context),
       content: TextFormField(
         key: key,
         minLines: 4,
