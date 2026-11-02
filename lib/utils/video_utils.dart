@@ -142,21 +142,62 @@ abstract final class VideoUtils {
     return preferCodecs.firstOrNull ?? VideoDecodeFormatType.AVC;
   }
 
+  /// Qualities this build must not select.
+  ///
+  /// HDR Vivid / Dolby Vision / HDR 真彩 are 10-bit HLG or PQ streams. The
+  /// VideoToolbox path decodes them to `p010`, but the media_kit Darwin
+  /// software/hardware textures are 8-bit BGRA, so rendering them produces a
+  /// green image. Until the render path handles 10-bit, request and select the
+  /// SDR ladder only.
+  static const unsupportedVideoQualities = <int>{
+    129, // HDR Vivid
+    126, // 杜比视界
+    125, // HDR 真彩
+  };
+
+  static bool isSupportedVideoQuality(int? quality) =>
+      quality == null || !unsupportedVideoQualities.contains(quality);
+
   static int _findAvailableVideoQuality(
     List<VideoItem> videoList,
     List<int>? acceptQuality,
     int preferQuality,
   ) {
-    final highestVideoQa = videoList.first.id;
-    if (preferQuality >= highestVideoQa) {
-      return highestVideoQa;
+    // Never jump to a stream we cannot render. `videoList.first` is the highest
+    // returned id, which is HDR whenever the account may fetch it.
+    final available = <int>{for (final e in videoList) e.id};
+    if (unsupportedVideoQualities.contains(preferQuality)) {
+      preferQuality = _highestSupported(available) ?? preferQuality;
+    }
+
+    if (available.contains(preferQuality)) {
+      return preferQuality;
+    }
+
+    final highest = videoList.first.id;
+    if (preferQuality >= highest) {
+      return _highestSupported(available) ?? highest;
     }
 
     if (acceptQuality != null && acceptQuality.isNotEmpty) {
-      return acceptQuality.findTargetMedia((e) => e, preferQuality);
+      final supported = acceptQuality.where(isSupportedVideoQuality).toList();
+      if (supported.isNotEmpty) {
+        return supported.findTargetMedia((e) => e, preferQuality);
+      }
     }
 
-    return videoList.findTargetMedia((e) => e.id, preferQuality).quality.code;
+    final sdr = videoList.where((e) => isSupportedVideoQuality(e.id)).toList();
+    final pool = sdr.isEmpty ? videoList : sdr;
+    return pool.findTargetMedia((e) => e.id, preferQuality).quality.code;
+  }
+
+  static int? _highestSupported(Set<int> available) {
+    int? best;
+    for (final q in available) {
+      if (!isSupportedVideoQuality(q)) continue;
+      if (best == null || q > best) best = q;
+    }
+    return best;
   }
 
   static (

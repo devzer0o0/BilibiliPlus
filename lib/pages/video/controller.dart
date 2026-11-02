@@ -821,7 +821,7 @@ class VideoDetailController extends GetxController
 
   Future<void> _supplementVideoQualities() async {
     final quality = data.missingVideoQualityBelowHighest;
-    if (quality == -1) return;
+    if (quality == -1 || !VideoUtils.isSupportedVideoQuality(quality)) return;
     final result = await _getVideoUrl(quality);
     if (result case Success(:final response)) {
       data.dash!.video!.merge(response.dash?.video);
@@ -869,7 +869,10 @@ class VideoDetailController extends GetxController
       preferCodecs = isWiFi ? Pref.preferCodecs : Pref.preferCodecsCellular;
     }
 
-    final result = await _getVideoUrl(VideoQuality.hdrVivid.code);
+    // Ask for the highest SDR quality. Requesting HDR (129/126/125) makes the
+    // server return 10-bit HLG streams that the current 8-bit render path
+    // draws as a green image.
+    final result = await _getVideoUrl(VideoQuality.super8k.code);
 
     if (result case Success(:final response)) {
       data = response;
