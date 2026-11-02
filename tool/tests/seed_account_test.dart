@@ -90,6 +90,16 @@ void main() {
       );
     }
 
+    // Auto-play defaults to off, so without this the player never initialises
+    // and PLVideoPlayer is never built - the video page just shows the cover.
+    final autoPlay = Platform.environment['SEED_AUTOPLAY'];
+    if (autoPlay != null && autoPlay.isNotEmpty) {
+      await GStorage.setting.put(
+        SettingBoxKey.autoPlayEnable,
+        autoPlay == '1',
+      );
+    }
+
     // ignore: avoid_print
     print('seeded mid=' + account.mid.toString());
     await Hive.close();

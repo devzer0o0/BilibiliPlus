@@ -79,50 +79,46 @@ So the gate **is** evaluated - exactly once, while all three conditions are
 still false - and the `Obx` never rebuilds afterwards. That is why the player
 widget is never constructed even though playback works.
 
-A third round found the cause. Instrumenting `setDataSource` showed its
-`onInit` callback is never reached, because of a guard inside it:
+## Resolved: auto-play was off, so nothing ever initialised
+
+The explanation is mundane. `Pref.autoPlayEnable` defaults to **false**:
 
 ```dart
-if (_playerCount == 0) {
-  return;              // skips onInit?.call()
-}
+static bool get autoPlayEnable =>
+    _setting.get(SettingBoxKey.autoPlayEnable, defaultValue: false);
 ```
 
-`_playerCount` is bumped in `PlPlayerController.getInstance()` and decremented
-in the dispose path. When it reads 0 the method bails before
-`_createVideoController` and before `onInit?.call()`, so
-`videoDetailController.videoState` stays `false` forever. The `Obx` in
-`plPlayer()` therefore never rebuilds, `PLVideoPlayer` is never constructed, and
-`NativeVideoSurface` never runs.
+With auto-play off, `initPlayerIfNeeded` returns `null` without calling
+`playerInit`, so `setDataSource` never runs, `onInit` never fires,
+`videoState` stays false, and the `Obx` in `plPlayer()` correctly renders
+`SizedBox.shrink()`. The video page shows the **cover image**, not a paused
+frame - which is what three earlier rounds mistook for playback.
 
-Role of each flag in the gate:
+The tell is that consecutive screenshots of the player area were byte-identical:
 
-| Flag | Type | Tracked by Obx |
-| --- | --- | --- |
-| `videoState` | `RxBool` | yes - but it is never set to true on this path |
-| `autoPlay` | getter returning `bool` from `_autoPlay` | **no** - plain bool read |
+```text
+frame 0: ff183e2ff165bf76
+frame 1: ff183e2ff165bf76      <- cover, not video
+frame 2: ff183e2ff165bf76
+```
 
-So even if `videoState` did flip, `autoPlay` would not be a reactive dependency.
+With `SEED_AUTOPLAY=1` the same check gives three different hashes and the
+widget tree builds normally.
 
-**The practical consequence stands**: the output-resize path is not wired into
-playback in this build. Its logic is unit tested
-(`video_output_size_test.dart`, `video_output_resize_test.dart`), but the
-wiring is unreachable.
+Lessons worth keeping:
 
-This is upstream structure rather than something the branch introduced:
-`plPlayer()`, `setDataSource` and the `_playerCount` guard are original code;
-the branch only adds the `resizeVideoOutput` argument.
+- "the screen shows the video" is not evidence of playback; compare successive
+  frames of the player rect.
+- every earlier marker (`PLVP_GATE`, `SURFACE_BRANCH`, `SETDS`, `ONINIT`) was
+  correct to stay silent - the code genuinely was not running.
 
-Whether `_playerCount == 0` is a real defect or an expected state in this launch
-sequence is **not decided here** - deciding it needs a widget test that mounts
-the page with a live controller.
+`tool/tests/seed_account_test.dart` gained `SEED_AUTOPLAY` so playback scenarios
+can be set up headlessly. Temporary markers were removed; `QA_PICK` was kept
+because the regression scripts rely on it.
 
-Note this is pre-existing structure, not something this branch introduced:
-`plPlayer()` and its `Obx` are unchanged upstream code except for the
-`resizeVideoOutput` argument.
-
-Temporary markers were removed; `QA_PICK` was kept because the regression
-scripts rely on it.
+The output-resize wiring is therefore **not** broken - it simply never executed
+in the earlier runs because playback never started. Its logic remains covered by
+`video_output_size_test.dart` and `video_output_resize_test.dart`.
 
 ## Why the attached iPhone still cannot be driven from the CLI
 
