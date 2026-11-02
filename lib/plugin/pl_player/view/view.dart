@@ -44,6 +44,7 @@ import 'package:PiliPlus/plugin/pl_player/models/gesture_type.dart';
 import 'package:PiliPlus/plugin/pl_player/models/video_fit_type.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/app_bar_ani.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/backward_seek.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/video_output_size.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/bottom_control.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/common_btn.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/forward_seek.dart';
@@ -2034,10 +2035,12 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                 // software renderer of Windows & Linux clamps each axis to
                 // 1920x1080 independently, which would letterbox an arbitrary
                 // source.
-                final resizeVideoOutput =
-                    plPlayerController.hwdec != null &&
-                    plPlayerController.superResolutionType.value ==
-                        SuperResolutionType.disable;
+                final resizeVideoOutput = shouldResizeVideoOutput(
+                  hardwareDecoding: plPlayerController.hwdec != null,
+                  superResolutionDisabled:
+                      plPlayerController.superResolutionType.value ==
+                      SuperResolutionType.disable,
+                );
                 return Transform.flip(
                   flipX: plPlayerController.flipX.value,
                   flipY: plPlayerController.flipY.value,

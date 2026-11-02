@@ -3,6 +3,16 @@ import 'dart:math' as math;
 
 import 'package:flutter/painting.dart';
 
+/// Whether the native output should be told to resize at all.
+///
+/// Super-resolution shaders must process the full source, and hardware
+/// decoding is a prerequisite for the output-resize API. Extracted from the
+/// widget so the rule can be asserted without building a player.
+bool shouldResizeVideoOutput({
+  required bool hardwareDecoding,
+  required bool superResolutionDisabled,
+}) => hardwareDecoding && superResolutionDisabled;
+
 /// Keep the source aspect ratio in mpv; fitting/stretching stays in Flutter.
 Size? videoOutputSize({
   required Size source,
