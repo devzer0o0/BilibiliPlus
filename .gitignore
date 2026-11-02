@@ -149,4 +149,8 @@ pili_release.json
 
 dist
 
+# Release artifacts named test* stay ignored, but the unit/widget test tree is
+# tracked source and must not be caught by the pattern below.
 test*
+!/test/
+!/test/**
