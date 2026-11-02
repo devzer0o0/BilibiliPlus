@@ -34,9 +34,22 @@ Title `BV1Hbs96JEM3` (single-part, `accept_quality` includes 126).
 | off | `prefer=126 picked=112 codec=AV1` | ok | gate refused 126, fell back to an SDR rendition |
 | on, Wi-Fi slot only | `prefer=80 picked=80 codec=AV1` | ok | the bug this section documents |
 
-The off case is the important control: asking for Dolby Vision with tone
-mapping disabled does not play it, it degrades to an SDR stream. That is the
-behaviour the gate is meant to have.
+Title `BV1b24y1w73N`, whose ladder is `[125, 120, 116, 80, 64, 32, 16]`, covers
+the HDR Vivid rung that the Dolby title does not offer:
+
+| Request | Tone mapping | Logged pick | Reading |
+| --- | --- | --- | --- |
+| 125 HDR Vivid | on | `picked=125 codec=HEVC` | allowed through |
+| 125 HDR Vivid | off | `picked=120 codec=AVC` | degraded to 4K |
+| 120 4K | on | `picked=120 codec=AVC` | honoured exactly |
+| 120 4K | off | `picked=120 codec=AVC` | honoured exactly |
+
+The off cases are the important control: asking for an HDR rung with tone
+mapping disabled does not play it, it degrades to the next SDR rung. That is
+the behaviour the gate is meant to have, and 4K never drifts upward either.
+
+Requesting a rung the server did not return also degrades safely - asking
+`BV1Hbs96JEM3` for 125 or 120, which it does not offer, lands on 112.
 
 ## Reproduce
 
