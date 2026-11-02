@@ -1,6 +1,20 @@
-# iPhone Air (420x912) layout audit
+# iOS layout audit (iPhone Air and iPhone 18 Pro)
 
-Date: 2026-11-03. Simulator: iPhone Air, iOS 27.2, DPR 3 (1260x2736).
+Date: 2026-11-03. Simulators: iPhone Air 420x912 pt (1260x2736 px) and
+iPhone 18 Pro 402x874 pt (1206x2622 px), both iOS 27.2, DPR 3.
+
+## Two sizes, same conclusion
+
+The bottom-bar fix was re-checked on a second, narrower device:
+
+| Device | Screen height | Nav bar bottom | Gap | Out-of-bounds |
+| --- | --- | --- | --- | --- |
+| iPhone Air | 912 pt | 912.0 | 0 | 0 |
+| iPhone 18 Pro | 874 pt | 874.0 | 0 | 0 |
+
+Six main tabs (home, dynamics, mine, hot, pgc, live) were swept on the
+18 Pro: 31/13/18/30/46/43 nodes, zero out-of-bounds on each. The safe-area fix
+therefore holds at both widths rather than only the one it was measured on.
 
 ## How the audit runs
 
