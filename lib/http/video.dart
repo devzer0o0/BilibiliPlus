@@ -299,7 +299,7 @@ abstract final class VideoHttp {
             } else {
               final reason = result['not_playable_reason'];
               if (reason != null) {
-                return Error(_parseVideoErr(reason['code'], reason['message']));
+                return Error(parseVideoErr(reason['code'], reason['message']));
               } else {
                 return Error(result.toString());
               }
@@ -333,16 +333,24 @@ abstract final class VideoHttp {
           fallback: fallback,
         );
       }
-      return Error(_parseVideoErr(res.data['code'], res.data['message']));
+      return Error(parseVideoErr(res.data['code'], res.data['message']));
     } catch (e, s) {
       return Error('$e\n\n$s');
     }
   }
 
-  static String _parseVideoErr(int? code, String? msg) {
+  /// Turns a playurl failure into something a user can read.
+  ///
+  /// Exposed rather than private so the wording can be asserted; the 87008
+  /// branch previously emitted a stray '}' because the template read
+  /// `($msg})` instead of `($msg)`.
+  static String parseVideoErr(int? code, String? msg) {
     return switch (code) {
       -404 => '视频不存在或已被删除',
-      87008 => '当前视频可能是专属视频，可能需包月充电观看($msg})',
+      87008 => '当前视频可能是专属视频，可能需包月充电观看(${msg ?? ''})',
+      // The catalogue retry path returns these when DRM content cannot be
+      // fetched even after the fallback.
+      -10403 => '该内容受版权保护，当前无法播放',
       _ => '错误($code): $msg',
     };
   }
