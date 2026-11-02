@@ -129,3 +129,16 @@ DIAG output rect=1260x709 source=3840x2160
 3. 4K playback remains smooth while scrolling danmaku/comments; check thermal behavior over at least 10–15 minutes.
 4. Background/foreground and quality/codec switches retain hardware decoding.
 5. Settings and login survive updates; no false update prompt appears.
+
+Status on 2026-11-02 (iPhone Air, iOS 27.2, builds 5581 to 5596):
+
+| Check | Result |
+| --- | --- |
+| hwdec videotoolbox on a 4K AV1 stream | pass, held 36 min and across lifecycle switches |
+| Output texture resized to the fitted area | pass, rect=1260x709 from 3840x2160 |
+| 420x912 layout | pass, 10 audited screens, 0 out-of-bounds nodes, 0 framework errors |
+| Settings/login preserved across 8 upgrades | pass, preferCodecs/hardwareDecoding/buvid intact |
+| No false update prompt | pass (metadata build, empty error log) |
+| Repeatable signed build | pass, 5589 to 5596 from tool/build_ios_av1.sh |
+| HDR / Dolby Vision stream | not exercisable: the test upload exposes only AVC renditions to an anonymous session; fallback covered by test/utils/video_codec_fallback_test.dart |
+| Battery/thermal curve | not measurable: the device stayed on the charger during the run |
