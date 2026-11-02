@@ -79,18 +79,24 @@ mpv's own `video-params/*` properties 8 seconds into playback:
 
 | Run | `pixelformat` | `primaries` | `gamma` | source |
 | --- | --- | --- | --- | --- |
-| 125 HDR, tone mapping **on** | `yuv420p` | `bt.709` | `bt.1886` | 1906x1080 |
-| 127 requested, tone mapping off (gate picks 120) | `nv12` | `bt.709` | `bt.1886` | 1080x1920 |
+| 125 HDR, tone-mapping options **injected** | `yuv420p` | `bt.709` | `bt.1886` | 1920x1080 |
+| 127 requested, gate picks 120 (SDR) | `nv12` | `bt.709` | `bt.1886` | 1080x1920 |
+| 125 HDR, tone-mapping options **suppressed** | `yuv420p` | `bt.709` | `bt.1886` | 2160x2880 |
 
-Both are 8-bit SDR with a BT.709 / BT.1886 output. The HDR run has already been
-converted by libplacebo before the frame reaches media_kit - which is exactly
-what `tone-mapping=auto` is supposed to do, and why the software path never
-shows the defect.
+All three come out 8-bit SDR with a BT.709 / BT.1886 output.
 
-This is a much stronger statement than the colour check: it is mpv reporting its
-own output format, not a heuristic on pixels.
+**The third row is the important one**: with
+`tone-mapping`/`hdr-compute-peak`/`target-colorspace-hint` deliberately *not*
+passed, mpv still produced `yuv420p` / `bt.709` / `bt.1886`. So on the software
+path those options make no measurable difference - mpv converts on its own.
 
-The probe was removed after the measurement.
+That weakens a claim made earlier in this document. The tone-mapping options are
+not what saves the software path; the software path was never at risk. Whether
+they help on the **hardware** path, where VideoToolbox hands over `p010`, is
+untested and cannot be tested here.
+
+The probe was removed after the measurement, and so was the temporary
+`TEMP_FORCE_HDR`/`TEMP_NO_TONEMAP` scaffolding.
 
 ## Why the QA_PICK line matters
 
