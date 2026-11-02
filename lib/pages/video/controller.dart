@@ -855,7 +855,10 @@ class VideoDetailController extends GetxController
       // A retry that throws would otherwise leave the area blank again: the
       // panel is cleared before the call, and only a parsed Error response sets
       // it again.
-      playError.value = '加载失败，请稍后重试';
+      playError.value = VideoUtils.playErrorMessage(
+        parsedMessage: null,
+        threw: true,
+      );
       Utils.reportError(e, s);
     } finally {
       isQuerying = false;

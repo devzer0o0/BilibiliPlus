@@ -164,6 +164,30 @@ abstract final class VideoUtils {
   static bool showsPlayErrorPanel(String? message) =>
       message != null && message.trim().isNotEmpty;
 
+  /// The message to show when the request itself throws, rather than returning
+  /// a parsed Error.
+  ///
+  /// Kept here so the retry path's contract is assertable without spinning up a
+  /// controller: whatever happens, a failure must leave a displayable message
+  /// behind, otherwise the panel silently disappears.
+  static const String playErrorOnException = '加载失败，请稍后重试';
+
+  /// Message to store after a fetch settles.
+  ///
+  /// [threw] distinguishes "the request returned an Error" from "the request
+  /// blew up"; only the latter needs the fallback text, because an Error already
+  /// carries its own message.
+  static String playErrorMessage({
+    required String? parsedMessage,
+    required bool threw,
+  }) {
+    if (threw) return playErrorOnException;
+    final parsed = parsedMessage?.trim();
+    return (parsed != null && parsed.isNotEmpty)
+        ? parsed
+        : playErrorOnException;
+  }
+
   /// Qualities this build must not select on the current render path.
   static Set<int> get unsupportedVideoQualities =>
       HdrSupport.allowsHdrQuality ? const <int>{} : hdrVideoQualities;
