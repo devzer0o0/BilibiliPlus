@@ -70,13 +70,18 @@ iOS; it is an engine limitation, not a PiliPlus or media_kit bug.
 | Flag | Meaning |
 | --- | --- |
 | `nativeTenBitPath` | false until Flutter accepts 10-bit IOSurfaces |
-| `enableToneMappedHdr` | opt-in: allow HDR via layer 1 |
+| `enableToneMappedHdr` | user switch, 设置 -> 播放设置 -> HDR 色调映射 |
 | `allowsHdrQuality` | derived; controls whether 125/126/129 are offered |
 
 Default is OFF, so the quality ladder only offers the SDR renditions and the
-green-screen regression cannot come back. Flipping `enableToneMappedHdr` to
-true re-enables HDR with tone mapping once the layered behaviour is verified
-on device.
+green-screen regression cannot come back. The switch is user-facing rather
+than a compile-time constant, so the tone-mapped path can be verified without
+a rebuild. The mpv tone-mapping options are added only when the gate is open,
+so normal SDR playback pays no conversion cost.
+
+Verified on the simulator: with the switch off the quality ladder ends at 4K
+with no HDR or Dolby rows; turning it on adds HDR 真彩 and 杜比视界; turning it
+back off removes them again.
 
 ## Verification still owed
 
