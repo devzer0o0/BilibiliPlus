@@ -34,6 +34,11 @@ jobs:
         shell: pwsh
         run: lib/scripts/patch.ps1 iOS
 
+      # Nothing in this repo ran the tests before, so a regression in the
+      # quality/HDR logic could ship unnoticed.
+      - name: Test
+        run: flutter test --reporter compact
+
       - name: Build iOS
         run: |
           flutter build ios --release --no-codesign --dart-define-from-file=pili_release.json --no-pub
