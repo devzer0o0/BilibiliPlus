@@ -340,9 +340,15 @@ class _MainAppState extends PopScopeState<MainApp>
     if (_mainController.useBottomNav) {
       bottomNav = _bottomNav;
       if (bottomNav != null) {
+        // MainLayout pins the bar to the bottom edge and the bar widgets apply
+        // their own SafeArea, so the ambient insets must not be inherited here.
+        // Only removing the top inset left the bottom 34 pt double-counted on
+        // iPhone Air: the bar drew its labels above an empty strip the height
+        // of the home-indicator inset.
         bottomNav = MediaQuery.removePadding(
           context: context,
           removeTop: true,
+          removeBottom: true,
           child: bottomNav,
         );
       }
