@@ -9,7 +9,11 @@
 #   3. no temporary diagnostic markers from this repo survived the build
 set -uo pipefail
 
-APP="${1:?usage: verify_release_constraints.sh <Runner.app>}"
+if [ $# -lt 1 ]; then
+  echo "usage: verify_release_constraints.sh <Runner.app>" >&2
+  exit 2
+fi
+APP="$1"
 FAIL=0
 note() { printf '  %s\n' "$1"; }
 bad()  { printf '  FAIL: %s\n' "$1"; FAIL=1; }

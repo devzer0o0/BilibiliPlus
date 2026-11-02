@@ -10,7 +10,11 @@
 # tonemap: 1 = HDR tone mapping on, 0 = off
 set -uo pipefail
 
-BVID="${1:?usage: hdr_regression.sh <bvid> [quality] [tonemap]}"
+if [ $# -lt 1 ]; then
+  echo "usage: hdr_regression.sh <bvid> [quality] [tonemap]" >&2
+  exit 2
+fi
+BVID="$1"
 QUALITY="${2:-127}"
 TONEMAP="${3:-0}"
 

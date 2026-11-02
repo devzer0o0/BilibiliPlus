@@ -11,6 +11,13 @@ FAIL=0
 pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; FAIL=1; }
 
+echo "== 0. script self-checks =="
+if bash "$ROOT/tool/selftest.sh" >/dev/null 2>&1; then
+  pass "verification scripts fail correctly"
+else
+  fail "verification script self-checks"
+fi
+
 echo "== 1. unit suite =="
 if ( cd "$ROOT" && flutter test --reporter compact 2>&1 | tail -1 | grep -q 'All tests passed' ); then
   pass "flutter test"
