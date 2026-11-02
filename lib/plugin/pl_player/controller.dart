@@ -849,6 +849,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     final opt = {
       'video-sync': Pref.videoSync,
       if (Platform.isAndroid) 'ao': Pref.audioOutput,
+      // iOS：显式让 mpv 对所有支持的编码尝试硬解。iPhone Air 的
+      // VideoToolbox 支持 H.264/HEVC/VP9/AV1，缺少这一项时 AV1 可能
+      // 仍走 libdav1d 软解。
+      'hwdec-codecs': 'all',
       'volume':
           (PlatformUtils.isMobile ? Pref.playerVolume : volume.value * 100)
               .toString(),
