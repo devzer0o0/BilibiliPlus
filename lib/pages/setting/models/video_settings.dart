@@ -257,7 +257,11 @@ Future<void> _showVideoQaDialog(
     builder: (context) => SelectDialog<int>(
       title: '默认画质',
       value: Pref.defaultVideoQa,
-      values: VideoQuality.values.map((e) => (e.code, e.desc)).toList(),
+      // HDR levels are hidden while the render path is 8-bit; see HdrSupport.
+      values: VideoQuality.values
+          .where((e) => VideoUtils.isSupportedVideoQuality(e.code))
+          .map((e) => (e.code, e.desc))
+          .toList(),
     ),
   );
   if (res != null) {
@@ -275,7 +279,10 @@ Future<void> _showVideoCellularQaDialog(
     builder: (context) => SelectDialog<int>(
       title: '蜂窝网络画质',
       value: Pref.defaultVideoQaCellular,
-      values: VideoQuality.values.map((e) => (e.code, e.desc)).toList(),
+      values: VideoQuality.values
+          .where((e) => VideoUtils.isSupportedVideoQuality(e.code))
+          .map((e) => (e.code, e.desc))
+          .toList(),
     ),
   );
   if (res != null) {

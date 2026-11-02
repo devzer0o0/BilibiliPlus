@@ -24,6 +24,7 @@ import 'package:PiliPlus/utils/id_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/utils.dart';
+import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -129,6 +130,9 @@ class _DownloadPanelState extends State<DownloadPanel> {
                       (context as Element).markNeedsBuild();
                     },
                     itemBuilder: (context) => VideoQuality.values
+                        .where(
+                          (e) => VideoUtils.isSupportedVideoQuality(e.code),
+                        )
                         .map(
                           (e) => PopupMenuItem(
                             value: e,
