@@ -72,6 +72,26 @@ original investigation concluded, and it means:
 
 The escape hatch was removed after the experiment.
 
+### Measured: mpv hands over 8-bit either way
+
+Rather than infer this from the picture, the player was instrumented to read
+mpv's own `video-params/*` properties 8 seconds into playback:
+
+| Run | `pixelformat` | `primaries` | `gamma` | source |
+| --- | --- | --- | --- | --- |
+| 125 HDR, tone mapping **on** | `yuv420p` | `bt.709` | `bt.1886` | 1906x1080 |
+| 127 requested, tone mapping off (gate picks 120) | `nv12` | `bt.709` | `bt.1886` | 1080x1920 |
+
+Both are 8-bit SDR with a BT.709 / BT.1886 output. The HDR run has already been
+converted by libplacebo before the frame reaches media_kit - which is exactly
+what `tone-mapping=auto` is supposed to do, and why the software path never
+shows the defect.
+
+This is a much stronger statement than the colour check: it is mpv reporting its
+own output format, not a heuristic on pixels.
+
+The probe was removed after the measurement.
+
 ## Why the QA_PICK line matters
 
 A frame can look correct while the player is on the wrong rendition: 360p,
