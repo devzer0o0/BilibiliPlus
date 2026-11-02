@@ -156,6 +156,14 @@ abstract final class VideoUtils {
     125, // HDR 真彩
   };
 
+  /// Whether the player area should show the failure panel.
+  ///
+  /// A failed playurl leaves `videoState` false, so the area used to render
+  /// nothing at all and the only explanation was a two-second toast. The panel
+  /// needs something to say, so an empty message still means "render nothing".
+  static bool showsPlayErrorPanel(String? message) =>
+      message != null && message.trim().isNotEmpty;
+
   /// Qualities this build must not select on the current render path.
   static Set<int> get unsupportedVideoQualities =>
       HdrSupport.allowsHdrQuality ? const <int>{} : hdrVideoQualities;

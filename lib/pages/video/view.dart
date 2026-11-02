@@ -66,7 +66,9 @@ import 'package:PiliPlus/utils/mobile_observer.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
+import 'package:PiliPlus/utils/extension/string_ext.dart';
 import 'package:PiliPlus/utils/storage.dart';
+import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
 import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
@@ -1200,6 +1202,60 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     ],
   );
 
+  /// Shown in place of the player when playurl fails.
+  ///
+  /// Previously this area rendered nothing at all, so after the two-second toast
+  /// disappeared the user was left looking at a blank rectangle with no way to
+  /// tell whether the app was still loading. Keeps the cover dimmed behind the
+  /// message and offers a retry.
+  Widget _playErrorPanel(double width, double height) {
+    final message = videoDetailController.playError.value;
+    if (!VideoUtils.showsPlayErrorPanel(message)) {
+      return const SizedBox.shrink();
+    }
+    final cover = videoDetailController.cover.value;
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (cover.isNotEmpty)
+            Image.network(
+              cover.http2https,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          const ColoredBox(color: Color(0x99000000)),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton(
+                  onPressed: () {
+                    videoDetailController
+                      ..playError.value = ''
+                      ..queryVideoUrl(fromReset: true);
+                  },
+                  child: const Text('重试'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget plPlayer({
     required double width,
     required double height,
@@ -1217,7 +1273,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
           !videoDetailController.videoState.value ||
               !videoDetailController.autoPlay ||
               plPlayerController?.videoController == null
-          ? const SizedBox.shrink()
+          ? _playErrorPanel(width, height)
           : PLVideoPlayer(
               maxWidth: width,
               maxHeight: height,

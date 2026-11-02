@@ -115,6 +115,12 @@ class VideoDetailController extends GetxController
   late PlayUrlModel data;
   final RxBool videoState = false.obs;
 
+  /// Why the last playurl request failed, shown in place of the player.
+  ///
+  /// Without this the failure was only a two-second toast and the player area
+  /// stayed blank, leaving nothing on screen to explain what happened.
+  final RxString playError = ''.obs;
+
   /// 播放器配置 画质 音质 解码格式
   final Rxn<VideoQuality> currentVideoQa = Rxn<VideoQuality>();
   AudioQuality? currentAudioQa;
@@ -987,6 +993,9 @@ class VideoDetailController extends GetxController
       videoState.value = false;
       if (plPlayerController.isFullScreen.value) {
         plPlayerController.triggerFullScreen(status: false);
+      }
+      if (result case Error(:final errMsg)) {
+        playError.value = errMsg ?? '视频加载失败';
       }
       result.toast();
     }
