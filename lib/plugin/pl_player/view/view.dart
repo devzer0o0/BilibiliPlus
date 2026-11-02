@@ -55,6 +55,7 @@ import 'package:PiliPlus/utils/android/bindings.g.dart';
 import 'package:PiliPlus/utils/cache_manager.dart';
 import 'package:PiliPlus/utils/connectivity_utils.dart';
 import 'package:PiliPlus/utils/desktop/window_controller.dart';
+import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:PiliPlus/utils/duration_utils.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
@@ -791,7 +792,13 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                 videoFormat.length,
                 (index) {
                   final item = videoFormat[index];
-                  final enabled = availableQa.contains(item.quality);
+                  // Same gate as the top-bar sheet: a rung the render path
+                  // cannot draw must not be selectable here either, or the
+                  // choice is persisted as the default for later videos.
+                  final enabled = VideoUtils.isQualitySelectable(
+                    item.quality,
+                    availableQa,
+                  );
                   return PopupMenuItem<int>(
                     enabled: enabled,
                     height: 35,
@@ -799,6 +806,12 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                     value: item.quality,
                     onTap: () async {
                       if (currentVideoQa.code == item.quality) {
+                        return;
+                      }
+                      if (!VideoUtils.isQualitySelectable(
+                        item.quality,
+                        availableQa,
+                      )) {
                         return;
                       }
                       final int quality = item.quality!;
