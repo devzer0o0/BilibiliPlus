@@ -64,11 +64,32 @@ In HEVC, `hvc1.2.4` is Main10 and `hvc1.1.6` is Main. So 122 is an 8-bit
 3840x2160 rendition and cannot reproduce the green screen. The earlier worry
 that an unknown id could bypass the HDR gate does not apply here.
 
-It remains true in general: `unsupportedVideoQualities` compares literal ids,
-so any future **10-bit** rung would have to be added there. `fromCode` handles
-an unknown id safely by falling back to `fromId(code, code.toString())`.
+## The gate also checks the codec profile
+
+The id blocklist only knows today's rungs, so the player additionally inspects
+the codec string:
+
+- `VideoUtils.isTenBitCodec` - HEVC `hvc1.2.4`/`hev1.2.4` is Main10; for
+  `av01.` the fourth field is the bit depth
+- `VideoUtils.isSupportedVideoStream` - combines the id check with the
+  bit-depth check
+- `VideoUtils.selectVideoVariant` - when several variants share a quality id it
+  will not pick a 10-bit one, including in the last-resort fallback that used to
+  return `variants.first`
+
+With the switch closed a future 10-bit rung under an unknown id is now skipped
+instead of played. Ordinary 4K is unaffected: 122 and 120 are `hvc1.1.6`
+(8-bit) and still play.
+
+Verified in the simulator after the change: `prefer=120` still yields
+`picked=120 codec=AVC`, and `prefer=125` with tone mapping off still degrades
+to 120.
+
+`fromCode` handles an unknown id safely by falling back to
+`fromId(code, code.toString())`.
 
 ## Tests
 
 - `test/models/pgc_envelope_test.dart` - envelope shapes
 - `test/models/video_quality_code_test.dart` - unknown id handling
+- `test/utils/video_stream_gate_test.dart` - codec-profile gate
