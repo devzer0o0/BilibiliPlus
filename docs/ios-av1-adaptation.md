@@ -31,7 +31,7 @@ Runtime contract:
 - codec preference `HEVC, AVC, AV1` for normal playback;
 - buffer 256 MB / 30 s.
 
-The patched AV1 framework was validated to contain the AV1 VideoToolbox symbols and to export exactly the same 359 symbols as the stock framework. On-device 4K playback already reports `hwdec=videotoolbox`; AV1 codec confirmation still needs a video whose 4K stream is AV1.
+The patched AV1 framework was validated to contain the AV1 VideoToolbox symbols and to export exactly the same 359 symbols as the stock framework. On an iPhone Air, a 4096x2160 stream reported `hwdec=videotoolbox` and `VideoParams(pixelformat: videotoolbox, hwPixelformat: nv12)`; the native output was resized from 4096x2160 to 1260x665 by #3088. The tested 4K stream did not expose its codec name in the diagnostics, so an AV1-only 4K clip still needs a final playback-info check.
 
 ## Rendering / heat
 
