@@ -26,8 +26,21 @@ if [ -d "$APP" ]; then
   else
     fail "release constraints"
   fi
+  # Temporary debug scaffolding used in earlier experiments must never ship.
+  DART_APP="$APP/Frameworks/App.framework/App"
+  if [ -f "$DART_APP" ]; then
+    LEAK=0
+    for kw in VPARAM TEMP_FORCE_HDR TEMP_NO_TONEMAP SURFACE_ PLVP_; do
+      n=$(strings -a "$DART_APP" 2>/dev/null | grep -c "$kw")
+      if [ "$n" != "0" ]; then
+        fail "debug marker '$kw' present in release ($n)"
+        LEAK=1
+      fi
+    done
+    [ "$LEAK" = "0" ] && pass "no experiment scaffolding in the release binary"
+  fi
 else
-  printf '  SKIP  no release build present\n'
+  fail "no release build - run 'flutter build ios --release --no-codesign' first"
 fi
 
 echo "== 3. HDR gate in the simulator =="
