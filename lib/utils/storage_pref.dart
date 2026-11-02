@@ -246,12 +246,19 @@ abstract final class Pref {
     defaultValue: AudioQuality.k192.code,
   );
 
+  /// iOS ships an Avcodec build with the AV1 VideoToolbox backport, so AV1 is
+  /// hardware decoded there and saves bandwidth over HEVC at the same quality.
+  /// Other platforms keep the upstream AVC-first order.
+  static List<VideoDecodeFormatType> get defaultPreferCodecs => Platform.isIOS
+      ? const <VideoDecodeFormatType>[.AV1, .HEVC, .AVC]
+      : const <VideoDecodeFormatType>[.AVC, .AV1];
+
   static List<VideoDecodeFormatType> get preferCodecs {
     final codecs = _setting.get(SettingBoxKey.preferCodecs);
     if (codecs is List) {
       return codecs.map((i) => VideoDecodeFormatType.values.byName(i)).toList();
     }
-    return const <VideoDecodeFormatType>[.AVC, .AV1];
+    return defaultPreferCodecs;
   }
 
   static List<VideoDecodeFormatType> get preferCodecsCellular {

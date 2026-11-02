@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:PiliPlus/models/user/info.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/accounts/account.dart';
 import 'package:PiliPlus/utils/storage.dart';
@@ -23,6 +24,14 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('piliplus-account-test-');
     Hive.init(tempDir.path);
     GStorage.regAdapter();
+    // A persisted account serialises its buvid, which reads the settings box.
+    // Open every box the account adapters touch before writing a tombstone.
+    GStorage.setting = await Hive.openBox('setting');
+    GStorage.video = await Hive.openBox('video');
+    GStorage.localCache = await Hive.openBox('localCache');
+    GStorage.userInfo = await Hive.openBox<UserInfoData>('userInfo');
+    GStorage.historyWord = await Hive.openBox('historyWord');
+    GStorage.watchProgress = await Hive.openBox<int>('watchProgress');
     Accounts.account = await Hive.openBox<LoginAccount>('account');
   });
 

@@ -126,7 +126,8 @@ List<SettingsModel> get videoSettings => [
     title: '首选解码格式',
     leading: const Icon(Icons.movie_creation_outlined),
     getSubtitle: () =>
-        '首选解码格式：${(Pref.preferCodecs.map((i) => i.name).join(","))}，请根据设备支持情况与需求调整',
+        '首选解码格式：${(Pref.preferCodecs.map((i) => i.name).join(","))}'
+        '${Platform.isIOS ? '，AV1/HEVC 均由 VideoToolbox 硬解' : '，请根据设备支持情况与需求调整'}',
     onTap: _showCodecsDialog,
   ),
   NormalModel(
