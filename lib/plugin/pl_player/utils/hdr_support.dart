@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 
 import 'package:PiliPlus/utils/platform_utils.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 
 /// Whether the current build can render HDR (10-bit) video correctly.
 ///
@@ -18,8 +19,10 @@ abstract final class HdrSupport {
   /// Set to true once the Darwin texture path carries 10-bit frames.
   static const bool nativeTenBitPath = false;
 
-  /// Enable to allow HDR qualities with the tone-mapped SDR fallback.
-  static const bool enableToneMappedHdr = false;
+  /// User switch: allow HDR qualities with the tone-mapped SDR fallback.
+  ///
+  /// Defaults to off; the setting lives in 设置 -> 播放设置.
+  static bool get enableToneMappedHdr => Pref.enableToneMappedHdr;
 
   static bool get isIOS => Platform.isIOS;
 

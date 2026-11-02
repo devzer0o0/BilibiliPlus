@@ -155,6 +155,7 @@ abstract final class SettingBoxKey {
       touchSlopH = 'touchSlopH',
       floatingNavBar = 'floatingNavBar',
       removeSafeArea = 'removeSafeArea',
+      enableToneMappedHdr = 'enableToneMappedHdr',
       angleDegrees = 'angleDegrees',
       liveStream = 'liveStream',
       enableDocProvider = 'enableDocProvider',

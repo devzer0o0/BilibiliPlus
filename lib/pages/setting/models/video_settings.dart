@@ -35,6 +35,17 @@ List<SettingsModel> get videoSettings => [
     setKey: SettingBoxKey.p1080,
     defaultVal: true,
   ),
+  // Flutter's iOS texture is 8-bit only, so HDR renders green unless mpv tone
+  // maps it into SDR first. Off by default; enabling it re-exposes the HDR
+  // qualities with the tone-mapped output.
+  const SwitchModel(
+    title: 'HDR 色调映射',
+    subtitle: '开启后可选择 HDR/杜比视界画质；受限于 8-bit 渲染通路，'
+        '画质会映射为 SDR（不做此映射会绿屏）',
+    leading: Icon(Icons.hdr_on_outlined),
+    setKey: SettingBoxKey.enableToneMappedHdr,
+    defaultVal: false,
+  ),
   NormalModel(
     title: 'B站定向流量支持',
     subtitle: '若套餐含B站定向流量，则会自动使用。可查阅运营商的流量记录确认。',

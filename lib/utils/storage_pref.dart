@@ -1077,6 +1077,18 @@ abstract final class Pref {
   static bool get removeSafeArea =>
       _setting.get(SettingBoxKey.removeSafeArea, defaultValue: false);
 
+  /// Allow HDR qualities with an mpv tone-mapped SDR output.
+  ///
+  /// Flutter's iOS external texture only accepts 8-bit formats, so HDR cannot
+  /// reach the screen as true HDR. With this enabled libplacebo maps the HDR
+  /// transfer function into the SDR gamut first, which renders correctly
+  /// instead of the green image produced by feeding 10-bit planes straight
+  /// into the 8-bit texture.
+  static bool get enableToneMappedHdr => _setting.get(
+    SettingBoxKey.enableToneMappedHdr,
+    defaultValue: false,
+  );
+
   static int get angleDegrees =>
       _setting.get(SettingBoxKey.angleDegrees, defaultValue: 30);
 
