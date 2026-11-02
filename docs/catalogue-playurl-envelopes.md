@@ -1,70 +1,74 @@
 # Catalogue (pgc/pugv) play-url envelopes
 
 Probed against the live API on 2026-11-03 with a 大会员 account.
-Episode used: `ep_id=323085` (名侦探柯南 中配).
+Episode used: `ep_id=733316` (凡人修仙传 season 28747).
 
-## The two endpoints do not share a shape
+## The endpoints
 
 | Role | Constant | Path | Envelope |
 | --- | --- | --- | --- |
-| primary | `Api.ogvUrl` | `/pgc/player/web/playurl` | `data{...}` |
+| primary | `Api.ogvUrl` | `/ogv/player/playview` | `data{...}` |
 | fallback | `Api.pgcUrl` | `/pgc/player/web/v2/playurl` | `result{...}` |
+| pugv fallback | `Api.pugvUrl` | `/pugv/player/web/playurl` | `result{...}` |
 
-Both carry the play model under a `video_info` key, but under different
-parents. `VideoHttp.videoUrl` therefore reads:
+> Correction: an earlier revision of this file claimed the primary was
+> `/pgc/player/web/playurl`. That is wrong. The app's primary is
+> `/ogv/player/playview`, confirmed from the request line in the simulator log:
+>
+> ```text
+> https://api.bilibili.com/ogv/player/playview?bvid=...&ep_id=733316&qn=127&fnval=4048...
+> ```
 
-```dart
-// primary, when the response has no DRM marker
-data = PlayUrlModel.fromJson(res.data['data']['video_info']);
+## Primary envelope (verified)
 
-// fallback after a DRM retry
-data = PlayUrlModel.fromJson(res.data['result']['video_info']);
+```text
+data -> arc, exp_info, play_video_type, plugins, supplement,
+        user_status, video_extra, video_info, watch_progress
 ```
 
-Swapping the parents yields an empty `dash`, which surfaces as "resource not
-found" for paid content rather than as a parsing error.
+`VideoHttp.videoUrl` reads exactly `data['video_info']`, `data['watch_progress']`
+and `data['arc']['is_drm']`, so the primary branch matches the payload.
+
+## Fallback envelope (verified)
+
+```text
+result -> exp_info, play_check, play_view_business_info, video_info, view_info
+```
+
+The retry branch reads `result['video_info']`, which also matches.
 
 ## How the DRM retry is triggered
 
-The primary ogv response omits `video_info` and sets `arc.is_drm` beside it:
+The primary response omits `video_info` and sets `arc.is_drm` beside it:
 
 ```json
 {"data": {"arc": {"is_drm": true}, "video_info": null}}
 ```
 
-That combination makes `videoUrl` re-enter itself with `fallback: true`.
-The recursion terminates because the primary branch is guarded with
-`case .pgc || .pugv when !fallback`, so the retry can never loop.
+That makes `videoUrl` re-enter itself with `fallback: true`. It cannot loop
+because the primary branch is guarded with
+`case .pgc || .pugv when !fallback`.
 
-## Verified live response keys
+## Quality ids: 122 is plain 4K, not HDR
 
-```text
-primary  /pgc/player/web/playurl      data   -> (empty for this account)
-fallback /pgc/player/web/v2/playurl   result -> exp_info, play_check,
-                                                 play_view_business_info,
-                                                 video_info, view_info
-```
+The simulator logged `picked=122` for this episode, an id the `VideoQuality`
+enum does not declare. The live payload settles what it is:
 
-Tests covering this live in `test/models/pgc_envelope_test.dart`.
+| id | HEVC profile | Bit depth | Meaning |
+| --- | --- | --- | --- |
+| 125 | `hvc1.2.4.L153.90` | **10-bit** | HDR 真彩 |
+| 122 | `hvc1.1.6.L153.90` | 8-bit | plain 4K, no HDR |
+| 120 | `hvc1.1.6.L153.90` | 8-bit | 4K 超高清 |
 
-## Quality ids the catalogue serves but the enum does not declare
+In HEVC, `hvc1.2.4` is Main10 and `hvc1.1.6` is Main. So 122 is an 8-bit
+3840x2160 rendition and cannot reproduce the green screen. The earlier worry
+that an unknown id could bypass the HDR gate does not apply here.
 
-Playing `凡人修仙传` in the simulator logged:
+It remains true in general: `unsupportedVideoQualities` compares literal ids,
+so any future **10-bit** rung would have to be added there. `fromCode` handles
+an unknown id safely by falling back to `fromId(code, code.toString())`.
 
-```text
-QA_PICK prefer=127 picked=122 codec=AV1
-available=[125, 122, 122, 122, 120, 120, 120, 112, ...]
-```
+## Tests
 
-`122` has no `VideoQuality` entry (the enum declares 129/127/126/125/120/116/
-112/100/80/74/64/32/16/6). Two consequences worth knowing:
-
-- `VideoQuality.fromCode(122)` falls back to `fromId(122, '122')`, so the UI
-  shows the raw number rather than crashing. `safeFromCode` returns null, which
-  is the correct signal for "we do not know this rung".
-- the HDR gate blocks 125/126/129 by literal value, so an unrecognised id is
-  neither blocked nor treated as HDR. A future id that is genuinely 10-bit
-  would slip through and need adding to `unsupportedVideoQualities`.
-
-Also note the default of 127 (8K) is above what this title offers, so the
-selection correctly settled on the highest available rung instead of failing.
+- `test/models/pgc_envelope_test.dart` - envelope shapes
+- `test/models/video_quality_code_test.dart` - unknown id handling
