@@ -4,6 +4,7 @@ import 'package:PiliPlus/models/common/video/video_decode_type.dart';
 import 'package:PiliPlus/models/video/play/url.dart'
     show AudioItem, VideoItem, FormatItem;
 import 'package:PiliPlus/models_new/live/live_room_play_info/codec.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/hdr_support.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, debugPrint;
@@ -149,11 +150,15 @@ abstract final class VideoUtils {
   /// software/hardware textures are 8-bit BGRA, so rendering them produces a
   /// green image. Until the render path handles 10-bit, request and select the
   /// SDR ladder only.
-  static const unsupportedVideoQualities = <int>{
+  static const hdrVideoQualities = <int>{
     129, // HDR Vivid
     126, // 杜比视界
     125, // HDR 真彩
   };
+
+  /// Qualities this build must not select on the current render path.
+  static Set<int> get unsupportedVideoQualities =>
+      HdrSupport.allowsHdrQuality ? const <int>{} : hdrVideoQualities;
 
   static bool isSupportedVideoQuality(int? quality) =>
       quality == null || !unsupportedVideoQualities.contains(quality);

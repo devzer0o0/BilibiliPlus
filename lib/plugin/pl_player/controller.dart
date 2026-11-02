@@ -856,6 +856,14 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       'volume':
           (PlatformUtils.isMobile ? Pref.playerVolume : volume.value * 100)
               .toString(),
+      // HDR streams (HDR10/HLG, Dolby Vision) decode to 10-bit. The Darwin
+      // VideoToolbox path hands frames to media_kit as p010, but the Flutter
+      // texture is 8-bit BGRA, so without tone mapping the picture renders
+      // with swapped chroma (green). Let libplacebo map HDR into the SDR
+      // gamut before it reaches the texture.
+      'tone-mapping': 'auto',
+      'hdr-compute-peak': 'yes',
+      'target-colorspace-hint': 'yes',
     };
     final autosync = Pref.autosync;
     if (autosync != '0') {
