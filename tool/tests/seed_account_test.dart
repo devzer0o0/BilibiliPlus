@@ -68,10 +68,17 @@ void main() {
 
     // Optional: force a stored preference so playback scenarios can be driven
     // without walking the settings UI.
+    // Both slots must be set: the simulator reports a metered connection, so
+    // the player reads defaultVideoQaCellular and would otherwise ignore a
+    // pinned Wi-Fi quality.
     final qa = Platform.environment['SEED_DEFAULT_QUALITY'];
     if (qa != null && qa.isNotEmpty) {
       await GStorage.setting.put(
         SettingBoxKey.defaultVideoQa,
+        int.parse(qa),
+      );
+      await GStorage.setting.put(
+        SettingBoxKey.defaultVideoQaCellular,
         int.parse(qa),
       );
     }

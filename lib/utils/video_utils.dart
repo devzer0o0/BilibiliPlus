@@ -245,6 +245,16 @@ abstract final class VideoUtils {
       orElse: () => targetQaVideoList.first,
     );
 
+    // Diagnostic only in debug builds: makes it possible to confirm from the
+    // simulator log which rendition was actually chosen, instead of inferring
+    // it from the picture.
+    if (kDebugMode) {
+      debugPrint(
+        'QA_PICK prefer=$preferQuality picked=${targetVideo.id} '
+        'codec=${targetDecode.name} available=${videoList.map((e) => e.id).toList()}',
+      );
+    }
+
     return (targetVideo.id, targetFormat, targetDecode, targetVideo);
   }
 

@@ -70,6 +70,33 @@ for i in 0 1 2 3; do
   sleep 3
 done
 
+# Reveal the player chrome and report the quality it says it is on. Without
+# this the frame check alone cannot tell a 360p capture from an HDR one.
+echo "== reported quality =="
+python3 - "$SIM" <<'PY'
+import json, subprocess, sys, time
+sim = sys.argv[1]
+idb = "/tmp/idbenv/bin/idb"
+for attempt in range(3):
+    subprocess.run([idb, "ui", "tap", "--udid", sim, "210", "180"],
+                   capture_output=True, timeout=60)
+    time.sleep(2)
+    raw = subprocess.run([idb, "ui", "describe-all", "--udid", sim],
+                         capture_output=True, text=True, timeout=90).stdout
+    try:
+        nodes = json.loads(raw)
+    except Exception:
+        nodes = []
+    labels = [(n.get("AXLabel") or "").replace("\n", "/") for n in nodes]
+    hits = [l for l in labels if "当前画质" in l or "正在播放" in l]
+    if hits:
+        for h in hits[:3]:
+            print("  ", h[:70])
+        break
+else:
+    print("   (player chrome not reachable)")
+PY
+
 echo "== classifying =="
 python3 "$ROOT/tool/check_player_frame.py" "$OUT"/f*.png
 echo "frames kept in $OUT"
