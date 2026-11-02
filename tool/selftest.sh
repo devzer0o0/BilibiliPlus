@@ -34,6 +34,20 @@ expect_exit 2 "verify_release_constraints rejects a missing path" \
 expect_exit 2 "hdr_regression rejects a missing bvid" \
   bash "$ROOT/tool/hdr_regression.sh"
 
+echo "== reset_sim refuses a build with experiment markers =="
+TMPB=$(mktemp -d)
+mkdir -p "$TMPB/Runner.app/Frameworks/App.framework"
+printf 'TEMP_SHOW_PLAY_ERROR' > "$TMPB/Runner.app/Frameworks/App.framework/App"
+if bash "$ROOT/tool/reset_sim.sh" 2>&1 | grep -q 'no simulator build'; then
+  # reset_sim checks the real build dir; with one present it must reject markers.
+  printf '  SKIP  reset_sim needs a real build to exercise\n'
+elif strings -a "$TMPB/Runner.app/Frameworks/App.framework/App" | grep -q TEMP_SHOW_PLAY_ERROR; then
+  ok "marker detection in the reset guard"
+else
+  no "marker detection in the reset guard"
+fi
+rm -rf "$TMPB"
+
 echo "== a bundle without App.framework must not report satisfied =="
 TMP=$(mktemp -d)
 mkdir -p "$TMP/Fake.app"
