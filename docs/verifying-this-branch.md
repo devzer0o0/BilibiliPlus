@@ -11,12 +11,20 @@ tool/full_regression.sh
 
 | Stage | What it proves |
 | --- | --- |
-| unit suite | 148 tests over quality selection, HDR gating, output sizing, DRM fallback routing and layout |
+| unit suite | 158 tests over quality selection, HDR gating, output sizing, DRM fallback routing and layout |
 | release constraints | bundle id, AV1 ABI 61.3.100, 359 exports, no diagnostic residue |
+| experiment scaffolding | `VPARAM`, `TEMP_FORCE_HDR`, `TEMP_NO_TONEMAP`, `SURFACE_`, `PLVP_` absent from the AOT binary |
 | HDR gate | asking for 125 with tone mapping off logs `picked=120`, not 125 |
 | 4K exactness | asking for 120 logs `picked=120` |
 
-Last run: all four passed.
+Last run: all five passed.
+
+Two deliberate strictnesses were added after they caused real trouble:
+
+- the release stage now **fails** when no release build exists, instead of
+  printing SKIP. A green run that checked nothing is worse than a red one.
+- the scaffolding scan exists because debug markers were left in the tree more
+  than once during this session and only caught by hand.
 
 ## Individual checks
 
