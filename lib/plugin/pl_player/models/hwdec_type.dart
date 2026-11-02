@@ -47,4 +47,49 @@ enum HwDecType {
             ? autoSafe.hwdec
             : [mediacodec.hwdec, autoSafe.hwdec].join(',')
       : auto.hwdec;
+
+  /// Values that mean anything on the current platform.
+  ///
+  /// The dialog used to list every mpv backend, so an iPhone user had to scroll
+  /// past DirectX, VAAPI, VDPAU, CUDA, QSV and Rockchip entries to reach
+  /// `videotoolbox`. Keep the generic entries plus the backends that exist on
+  /// this OS.
+  static List<HwDecType> get valuesForPlatform {
+    const generic = <HwDecType>{no, auto, autoSafe, autoCopy};
+    final platformSpecific = switch (Platform.operatingSystem) {
+      'ios' || 'macos' => <HwDecType>{videotoolbox, videotoolboxCopy},
+      'android' => <HwDecType>{mediacodec, mediacodecCopy},
+      'windows' => <HwDecType>{
+        d3d12va,
+        d3d12vaCopy,
+        d3d11va,
+        d3d11vaCopy,
+        dxva2,
+        dxva2Copy,
+        vulkan,
+        vulkanCopy,
+        cuda,
+        cudaCopy,
+        qsv,
+        qsvCopy,
+        amf,
+        amfCopy,
+      },
+      'linux' => <HwDecType>{
+        vaapi,
+        vaapiCopy,
+        drm,
+        drmCopy,
+        vdpau,
+        vdpauCopy,
+        vulkan,
+        vulkanCopy,
+        cuda,
+        cudaCopy,
+        rkmpp,
+      },
+      _ => <HwDecType>{vulkan, vulkanCopy},
+    };
+    return values.where((e) => generic.contains(e) || platformSpecific.contains(e)).toList();
+  }
 }

@@ -471,8 +471,11 @@ Future<void> _showHwDecDialog(
     builder: (context) => OrderedMultiSelectDialog<String>(
       title: const Text('硬解模式'),
       initValues: Pref.hardwareDecoding.split(','),
+      // Only list backends that exist on this platform; an iPhone user does
+      // not need DirectX/VAAPI/CUDA entries before reaching videotoolbox.
       values: {
-        for (final e in HwDecType.values) e.hwdec: '${e.hwdec}\n${e.desc}',
+        for (final e in HwDecType.valuesForPlatform)
+          e.hwdec: '${e.hwdec}\n${e.desc}',
       },
     ),
   );
