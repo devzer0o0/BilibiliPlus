@@ -40,12 +40,17 @@ fi
 echo "== diagnostic residue =="
 DART="$APP/Frameworks/App.framework/App"
 if [ -f "$DART" ]; then
-  for kw in QA_PICK 'prefer=' 'picked='; do
+  # Includes the experiment scaffolding used in this repo's debugging passes,
+  # because leaving any of it in a shipping binary is the same mistake.
+  for kw in QA_PICK 'prefer=' 'picked=' VPARAM TEMP_FORCE_HDR \
+            TEMP_NO_TONEMAP SURFACE_ PLVP_; do
     n=$(strings -a "$DART" 2>/dev/null | grep -c "$kw")
     [ "$n" = "0" ] && note "'$kw' absent" || bad "'$kw' appears $n time(s)"
   done
 else
-  note "(no App.framework - skipping, debug builds keep Dart code in kernel)"
+  # A debug bundle keeps Dart code in kernel_blob.bin, so this check cannot run.
+  # Reporting "satisfied" without having looked would be worse than failing.
+  bad "no App.framework - cannot scan for diagnostics (is this a debug build?)"
 fi
 
 echo
