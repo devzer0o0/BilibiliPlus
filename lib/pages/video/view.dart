@@ -67,6 +67,7 @@ import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
+import 'package:PiliPlus/plugin/pl_player/widgets/play_error_panel.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
@@ -1213,46 +1214,16 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     if (!VideoUtils.showsPlayErrorPanel(message)) {
       return const SizedBox.shrink();
     }
-    final cover = videoDetailController.cover.value;
-    return SizedBox(
+    return PlayErrorPanel(
+      message: message,
+      cover: videoDetailController.cover.value.http2https,
       width: width,
       height: height,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (cover.isNotEmpty)
-            Image.network(
-              cover.http2https,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-            ),
-          const ColoredBox(color: Color(0x99000000)),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                OutlinedButton(
-                  onPressed: () {
-                    videoDetailController
-                      ..playError.value = ''
-                      ..queryVideoUrl(fromReset: true);
-                  },
-                  child: const Text('重试'),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      onRetry: () {
+        videoDetailController
+          ..playError.value = ''
+          ..queryVideoUrl(fromReset: true);
+      },
     );
   }
 
