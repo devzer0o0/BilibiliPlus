@@ -959,6 +959,15 @@ class HeaderControlState extends State<HeaderControl>
                         if (isCurr) {
                           return;
                         }
+                        // ListTile already nulls onTap when disabled, but the
+                        // handler is what persists the choice, so re-check
+                        // instead of trusting the widget state.
+                        if (!VideoUtils.isQualitySelectable(
+                          item.quality,
+                          availableQa,
+                        )) {
+                          return;
+                        }
                         Get.back();
                         final int quality = item.quality!;
                         final newQa = VideoQuality.fromCode(quality);
