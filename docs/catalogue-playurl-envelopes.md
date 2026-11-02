@@ -46,3 +46,25 @@ fallback /pgc/player/web/v2/playurl   result -> exp_info, play_check,
 ```
 
 Tests covering this live in `test/models/pgc_envelope_test.dart`.
+
+## Quality ids the catalogue serves but the enum does not declare
+
+Playing `凡人修仙传` in the simulator logged:
+
+```text
+QA_PICK prefer=127 picked=122 codec=AV1
+available=[125, 122, 122, 122, 120, 120, 120, 112, ...]
+```
+
+`122` has no `VideoQuality` entry (the enum declares 129/127/126/125/120/116/
+112/100/80/74/64/32/16/6). Two consequences worth knowing:
+
+- `VideoQuality.fromCode(122)` falls back to `fromId(122, '122')`, so the UI
+  shows the raw number rather than crashing. `safeFromCode` returns null, which
+  is the correct signal for "we do not know this rung".
+- the HDR gate blocks 125/126/129 by literal value, so an unrecognised id is
+  neither blocked nor treated as HDR. A future id that is genuinely 10-bit
+  would slip through and need adding to `unsupportedVideoQualities`.
+
+Also note the default of 127 (8K) is above what this title offers, so the
+selection correctly settled on the highest available rung instead of failing.
