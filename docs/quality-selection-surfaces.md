@@ -36,6 +36,12 @@ colour conversion before handing them to libwebp. The frames never reach
 Flutter's 8-bit texture, so 10-bit input is not the failure mode here and
 blocking it would only remove a working option.
 
+Confidence: this is read from the option list, **not** from an actual 10-bit
+transcode. The dialog needs manual interaction and sits behind a screenshot
+button, so it was not exercised. The risk of being wrong is low and bounded -
+the worst case is a failed export, not a green screen - but it is an assumption
+rather than a measurement.
+
 If this picker ever starts feeding the live texture instead of the transcoder,
 it must be gated like the others.
 
