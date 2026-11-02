@@ -46,6 +46,36 @@ Those were verified earlier on an iPhone Air (see
 [ios-av1-adaptation.md](ios-av1-adaptation.md)); HDR there still needs
 re-checking with the tone-mapping switch on.
 
+## Open question: PLVideoPlayer does not appear to build
+
+While trying to confirm the output-resize path, debugPrint markers were added
+to `_videoWidget` in `lib/plugin/pl_player/view/view.dart` and to
+`NativeVideoSurface._attach`. The video page played normally, and `QA_PICK`
+from `VideoUtils.findTargetVideo` did appear in the same log stream, but **none
+of the `SURFACE_*` markers ever printed** - not even the one at the very top of
+`_videoWidget`.
+
+What was checked, and ruled out:
+
+| Hypothesis | Check | Result |
+| --- | --- | --- |
+| stale build | `strings kernel_blob.bin \| grep SURFACE_BUILD` on the installed bundle | present (2 hits) |
+| log capture timing | started `log stream --level debug` before relaunch | `QA_PICK` captured, markers not |
+| wrong class | `grep 'class PLVideoPlayer'` across `lib/` | one class, `view/view.dart:90` |
+| wrong import | `lib/pages/video/view.dart` imports `pl_player/view/view.dart` | confirmed |
+| early return | read `_videoWidget` from its opening brace | no early return before the marker |
+
+So the video page renders something other than this widget, or the getter is
+never evaluated on the path that paints the surface. The temporary markers were
+removed; `QA_PICK` was kept because the regression scripts rely on it.
+
+This matters because `resizeVideoOutput` and `NativeVideoSurface` are the
+code that implements the branch's headline feature. Their logic is unit tested
+(`video_output_size_test.dart`, `video_output_resize_test.dart`), but whether
+the widget is wired into the live player is **unverified**. Resolving it needs
+either a widget test that pumps `PLVideoPlayer`, or a device build where the
+resize can be observed end to end.
+
 ## Why the attached iPhone still cannot be driven from the CLI
 
 `xcrun devicectl` exposes a lot, but not enough to run a test unattended:
