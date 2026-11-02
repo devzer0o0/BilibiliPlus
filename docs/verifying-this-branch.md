@@ -40,16 +40,34 @@ requested - `Pref.defaultVideoQa` becomes 127, the server returns the ladder, an
 `_findAvailableVideoQuality` settles on 120. So the green screen cannot occur
 because **the 10-bit stream never plays**; it is not being rendered wrongly.
 
-That also means the simulator cannot reproduce the original bug directly: to see
-green you would have to force 125 through while tone mapping is off, which the
-gate prevents by design. Reproducing it would need a build with the gate
-temporarily disabled, or a device.
-
 ```text
 playback: QA_PICK prefer=125 picked=125 codec=HEVC
 frames:   f0 e5d15911  f1 df22ad6a  f2 634dc4a7   (all different = playing)
 colour:   RGB(41,30,17) RGB(71,55,33)  -> ok, not green
 ```
+
+### The green screen cannot be reproduced in the simulator at all
+
+A debug-only escape hatch (`PILIPLUS_FORCE_HDR_NO_TONEMAP`) was added to let
+125 through with tone mapping **off**, to force the original bug. The result
+was not green:
+
+```text
+QA_PICK prefer=125 picked=125 codec=HEVC    <- 10-bit stream, gate bypassed
+frames: 6a34acdb / 5d13bb26 / 19fbe2b9      <- playing
+colour: RGB(36,27,15) .. RGB(72,55,33)      <- correct, HUD showed FPS 49
+```
+
+So the defect is **specific to the VideoToolbox path**, not to feeding 10-bit
+frames into the 8-bit texture in general. The software renderer converts colour
+itself; VideoToolbox hands over `p010` without doing so. That matches what the
+original investigation concluded, and it means:
+
+- the simulator cannot be used to prove the tone-mapping fix works
+- it also cannot be used to reproduce the bug
+- the only way to settle either question is a physical device
+
+The escape hatch was removed after the experiment.
 
 ## Why the QA_PICK line matters
 
