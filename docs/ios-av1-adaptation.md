@@ -76,9 +76,29 @@ codec / ordered-multi-select dialogs render inside the viewport with long
 Chinese labels. `test/utils/video_codec_priority_test.dart` covers the codec
 ladder (`AV1` wins, `HEVC` and `AVC` fall back, `DVH1` stays ahead of SDR).
 
+## CI
+
+`.github/workflows/ios.yml` runs the upstream release build
+(`lib/scripts/build.ps1` writes `pili_release.json` with `pili.name/code/hash/time`,
+so CI builds already carry the metadata that suppresses the update prompt) and
+now also swaps in the AV1 Avcodec before re-signing:
+
+```sh
+cp ios/av1/Avcodec build/ios/iphoneos/Runner.app/Frameworks/Avcodec.framework/Avcodec
+plutil -replace MinimumOSVersion -string 15.0 \
+  build/ios/iphoneos/Runner.app/Frameworks/Avcodec.framework/Info.plist
+```
+
+The injection has to happen after `flutter build ios` and before the ad-hoc
+`codesign` loop, so the ad-hoc signature covers the replaced binary. The 3.4 MB
+framework is committed (`ios/av1/Avcodec`), so no external download is needed.
+
+Local signed builds keep using `tool/build_ios_av1.sh`, which performs the same
+swap plus a real identity/provisioning-profile signature.
+
 ## Verification checklist
 
-1. Playback info shows `codec: hevc` or `av1` and `hwdec: videotoolbox`.
+1. Playback info shows `codec: av1` (default on iOS) or `hevc` and `hwdec: videotoolbox`.
 2. `TextureGL: resize` settles near the fitted physical size, not 3840x2160.
 3. 4K playback remains smooth while scrolling danmaku/comments; check thermal behavior over at least 10–15 minutes.
 4. Background/foreground and quality/codec switches retain hardware decoding.

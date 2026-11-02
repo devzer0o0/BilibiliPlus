@@ -37,6 +37,12 @@ jobs:
       - name: Build iOS
         run: |
           flutter build ios --release --no-codesign --dart-define-from-file=pili_release.json --no-pub
+          # Ship the AV1 VideoToolbox Avcodec; the stock framework decodes AV1 in
+          # software. ABI 61.3.100 and the 359 exported symbols are unchanged.
+          cp ios/av1/Avcodec build/ios/iphoneos/Runner.app/Frameworks/Avcodec.framework/Avcodec
+          chmod 755 build/ios/iphoneos/Runner.app/Frameworks/Avcodec.framework/Avcodec
+          plutil -replace MinimumOSVersion -string 15.0 \
+            build/ios/iphoneos/Runner.app/Frameworks/Avcodec.framework/Info.plist
           ln -sf ./build/ios/iphoneos Payload
           # make AltSign happy...
           find Payload/Runner.app/Frameworks -type d -name "*.framework" -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \;

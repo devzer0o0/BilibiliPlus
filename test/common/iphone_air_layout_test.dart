@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/pages/setting/widgets/multi_select_dialog.dart';
+import 'package:PiliPlus/pages/setting/widgets/normal_item.dart';
 import 'package:PiliPlus/pages/setting/widgets/ordered_multi_select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -125,6 +127,67 @@ void main() {
     expect(find.text('确定'), findsOneWidget);
     final rect = dialogRect(tester);
     expect(rect.width, lessThanOrEqualTo(iphoneAirWidth));
+  });
+
+  testWidgets('settings rows fit without truncating the trailing value', (
+    tester,
+  ) async {
+    useViewport(tester, iphoneAirPhysical);
+    await tester.pumpWidget(
+      testApp(
+        Scaffold(
+          body: ListView(
+            children: [
+              NormalItem(
+                title: '首选解码格式',
+                subtitle: '首选解码格式：AV1,HEVC,AVC，AV1/HEVC 均由 VideoToolbox 硬解',
+                getTrailing: (theme) => Text(
+                  'AV1,HEVC,AVC',
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              NormalItem(
+                title: '硬解模式',
+                subtitle: '当前：videotoolbox,auto-safe（此项即mpv的--hwdec）',
+                getTrailing: (theme) => Text(
+                  'videotoolbox,auto-safe',
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    for (final label in ['首选解码格式', '硬解模式']) {
+      final rect = tester.getRect(find.text(label));
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(iphoneAirWidth));
+    }
+  });
+
+  testWidgets('multi select dialog fits the narrow viewport', (tester) async {
+    useViewport(tester, iphoneAirPhysical);
+    await tester.pumpWidget(
+      testApp(
+        MultiSelectDialog<int>(
+          title: '选择下载清晰度',
+          values: const {
+            1: '4K 超清（需要大会员）',
+            2: '1080P60 高帧率',
+            3: '1080P 高清',
+          },
+          initValues: const {1, 3},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    final rect = dialogRect(tester);
+    expect(rect.left, greaterThanOrEqualTo(0));
+    expect(rect.right, lessThanOrEqualTo(iphoneAirWidth));
   });
 
   testWidgets('long codec labels do not overflow a narrow viewport', (
