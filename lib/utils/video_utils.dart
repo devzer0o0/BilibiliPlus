@@ -130,7 +130,16 @@ abstract final class VideoUtils {
         return preferCodecs[bestIndex];
       }
     }
-    return VideoDecodeFormatType.fromString(codecs.first);
+    // A stream with a codec we do not know (e.g. vp09) must not abort the
+    // lookup: keep the caller's first preference and let it fall back to the
+    // first offered rendition.
+    final first = codecs.firstOrNull;
+    if (first != null) {
+      for (final e in VideoDecodeFormatType.values) {
+        if (e.codes.any(first.startsWith)) return e;
+      }
+    }
+    return preferCodecs.firstOrNull ?? VideoDecodeFormatType.AVC;
   }
 
   static int _findAvailableVideoQuality(
