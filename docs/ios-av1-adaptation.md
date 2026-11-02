@@ -96,11 +96,40 @@ framework is committed (`ios/av1/Avcodec`), so no external download is needed.
 Local signed builds keep using `tool/build_ios_av1.sh`, which performs the same
 swap plus a real identity/provisioning-profile signature.
 
+## Codec evidence: AV1, HEVC 10-bit, 8K (build 5597, logged-in 大会员 account)
+
+Build 5597 added a probe that records the actual container codec next to the
+hardware state, so AV1 hardware decode is proven instead of inferred. Raw lines
+from `Documents/.pili_logs.json` (2026-11-02):
+
+```text
+22:42:14 codec=av1  containerPixFmt=videotoolbox hwFmt=nv12 hwdec=videotoolbox src=3840x2160
+22:42:20 codec=hevc containerPixFmt=videotoolbox hwFmt=p010 hwdec=videotoolbox src=3840x2160
+22:42:27 codec=hevc containerPixFmt=videotoolbox hwFmt=nv12 hwdec=videotoolbox src=3840x2160
+22:42:48 codec=hevc containerPixFmt=yuv420p     hwFmt=null hwdec=no            src=3840x2160
+22:45:44 codec=av1  containerPixFmt=videotoolbox hwFmt=nv12 hwdec=videotoolbox src=4096x2160
+22:45:51 codec=av1  containerPixFmt=videotoolbox hwFmt=nv12 hwdec=videotoolbox src=8192x4320
+22:46:15 codec=hevc containerPixFmt=videotoolbox hwFmt=p010 hwdec=videotoolbox src=3840x2160
+```
+
+- **AV1 4K and AV1 8K both decode in hardware.** `containerPixFmt=videotoolbox`
+  means libmpv's output IS the VideoToolbox CVPixelBuffer, not a CPU frame that
+  was later uploaded - the AV1 VideoToolbox backport is actually in use.
+- **HEVC 10-bit / HDR** shows `hwFmt=p010` (10-bit planar VideoToolbox) with
+  `hwdec=videotoolbox`, so the 10-bit path stays on the GPU.
+- **8K AV1 is not downscaled before decode**: the decoder receives the full
+  8192x4320 surface.
+- One HEVC 4K sample at 22:42:48 fell back to `hwdec=no` / `yuv420p`. It was not
+  reproducible on request, so the trigger is still unknown; the current setting
+  is `videotoolbox,auto-safe`, and `auto-safe` is allowed to drop to software
+  when VideoToolbox rejects a stream. Pinning `videotoolbox` removes the
+  fallback at the cost of failing outright on streams the decoder refuses.
+
 ## Continuous-playback evidence (iPhone Air, iOS 27.2)
 
-Instrumented builds 5592/5594 carried temporary `Utils.reportError` probes that
+Instrumented build 5592 carried temporary `Utils.reportError` probes that
 wrote decoder state into `Documents/.pili_logs.json`; they were removed again
-before the shipped build (5595). A 36-minute AV1 4K session reported:
+before the shipped build. A 36-minute AV1 4K session reported:
 
 ```text
 DIAG vparams pixfmt=videotoolbox hw=nv12 3840x2160 hwdec=videotoolbox
@@ -115,7 +144,7 @@ DIAG output rect=1260x709 source=3840x2160
 ```
 
 - `hwdec-current` stayed `videotoolbox` in every sample and across
-  background → foreground plus danmaku toggles: no software fallback.
+  background -> foreground plus danmaku toggles.
 - `DIAG output rect=1260x709 source=3840x2160` confirms #3088 resizes the native
   output to the fitted area instead of keeping a 3840x2160 texture (the
   1260x665..709 band is expected for 16:9 in the portrait player).
@@ -140,5 +169,9 @@ Status on 2026-11-02 (iPhone Air, iOS 27.2, builds 5581 to 5596):
 | Settings/login preserved across 8 upgrades | pass, preferCodecs/hardwareDecoding/buvid intact |
 | No false update prompt | pass (metadata build, empty error log) |
 | Repeatable signed build | pass, 5589 to 5596 from tool/build_ios_av1.sh |
-| HDR / Dolby Vision stream | not exercisable: the test upload exposes only AVC renditions to an anonymous session; fallback covered by test/utils/video_codec_fallback_test.dart |
+| AV1 hardware decode, proven by codec string | pass: codec=av1 + containerPixFmt=videotoolbox at 3840x2160 and 8192x4320 |
+| HEVC 10-bit / HDR | pass: codec=hevc + hwFmt=p010 + hwdec=videotoolbox |
+| Dolby Vision (dvh1) | not exercised: no dvh1 rendition was offered for the sampled titles |
+| HEVC 4K software-decode outlier | one non-reproducible `hwdec=no` sample; trigger unknown, see codec evidence |
 | Battery/thermal curve | not measurable: the device stayed on the charger during the run |
+| 8K AV1 | pass: decoder receives the full 8192x4320 surface in hardware |
