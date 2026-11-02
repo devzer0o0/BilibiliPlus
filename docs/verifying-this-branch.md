@@ -65,16 +65,38 @@ What was checked, and ruled out:
 | wrong import | `lib/pages/video/view.dart` imports `pl_player/view/view.dart` | confirmed |
 | early return | read `_videoWidget` from its opening brace | no early return before the marker |
 
-So the video page renders something other than this widget, or the getter is
-never evaluated on the path that paints the surface. The temporary markers were
-removed; `QA_PICK` was kept because the regression scripts rely on it.
+A second round narrowed it down. `PLVideoPlayer.build` was instrumented directly
+and a counter was added to the `Obx` in `plPlayer()`:
 
-This matters because `resizeVideoOutput` and `NativeVideoSurface` are the
-code that implements the branch's headline feature. Their logic is unit tested
-(`video_output_size_test.dart`, `video_output_resize_test.dart`), but whether
-the widget is wired into the live player is **unverified**. Resolving it needs
-either a widget test that pumps `PLVideoPlayer`, or a device build where the
-resize can be observed end to end.
+```text
+PLVP_GATE calls: 1
+   PLVP_GATE hit=1 state=false autoPlay=false hasCtrl=false
+PLVP_BUILD: 0
+QA_PICK: 1
+```
+
+So the gate **is** evaluated - exactly once, while all three conditions are
+still false - and the `Obx` never rebuilds afterwards. That is why the player
+widget is never constructed even though playback works.
+
+Two readings, not yet distinguished:
+
+1. the `Obx` does not track the Rx that flips these values (they are read via
+   `videoDetailController`, so a separate subscription may own them), or
+2. the widget that owns this `Obx` is disposed before playback starts and the
+   frames on screen come from a different subtree.
+
+Either way the practical consequence stands: **the output-resize path is not
+observably wired into playback in this build.** Its logic is unit tested
+(`video_output_size_test.dart`, `video_output_resize_test.dart`), but the
+wiring is unverified.
+
+Note this is pre-existing structure, not something this branch introduced:
+`plPlayer()` and its `Obx` are unchanged upstream code except for the
+`resizeVideoOutput` argument.
+
+Temporary markers were removed; `QA_PICK` was kept because the regression
+scripts rely on it.
 
 ## Why the attached iPhone still cannot be driven from the CLI
 
