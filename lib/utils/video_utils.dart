@@ -163,6 +163,59 @@ abstract final class VideoUtils {
   static bool isSupportedVideoQuality(int? quality) =>
       quality == null || !unsupportedVideoQualities.contains(quality);
 
+  /// Whether a codec string describes a 10-bit stream.
+  ///
+  /// The id list above only covers the rungs Bilibili ships today. Checking the
+  /// codec profile catches a new 10-bit rung whose id is not in the list yet:
+  ///
+  /// - HEVC: hvc1.2.4 / hev1.2.4 are Main10, hvc1.1.6 is Main (8-bit)
+  /// - AV1:  `av01.<profile>.<level>M.<bitdepth>`, so `.10.` is 10-bit
+  /// - AVC:  always 8-bit
+  ///
+  /// Observed live: 125 -> hvc1.2.4.L153.90, 122/120 -> hvc1.1.6.L153.90.
+  static bool isTenBitCodec(String? codecs) {
+    if (codecs == null || codecs.isEmpty) return false;
+    if (codecs.startsWith('hev1.2') || codecs.startsWith('hvc1.2')) {
+      return true;
+    }
+    if (codecs.startsWith('av01.')) {
+      // av01.P.LLT.DD... - the fourth dot-separated field is the bit depth.
+      final parts = codecs.split('.');
+      if (parts.length >= 4 && parts[3] == '10') return true;
+    }
+    return false;
+  }
+
+  /// Whether a specific stream can be rendered by the current output path.
+  ///
+  /// Unlike [isSupportedVideoQuality] this also rejects a 10-bit stream whose
+  /// quality id is not in the known blocklist.
+  static bool isSupportedVideoStream(int? quality, String? codecs) =>
+      isSupportedVideoQuality(quality) &&
+      (HdrSupport.allowsHdrQuality || !isTenBitCodec(codecs));
+
+  /// Picks the entry to play from the variants of one quality id.
+  ///
+  /// Prefers the entry matching the requested codec, then any renderable
+  /// entry, and only falls back to the first one when nothing is renderable -
+  /// so an unknown 10-bit variant cannot be chosen just because it came first.
+  static VideoItem selectVideoVariant(
+    List<VideoItem> variants,
+    VideoDecodeFormatType decode, {
+    required bool allowTenBit,
+  }) {
+    assert(variants.isNotEmpty);
+    bool usable(VideoItem e) => allowTenBit || !isTenBitCodec(e.codecs);
+
+    for (final e in variants) {
+      if (usable(e) && decode.codes.any(e.codecs!.startsWith)) return e;
+    }
+    for (final e in variants) {
+      if (usable(e)) return e;
+    }
+    return variants.first;
+  }
+
   static int _findAvailableVideoQuality(
     List<VideoItem> videoList,
     List<int>? acceptQuality,
@@ -240,9 +293,10 @@ abstract final class VideoUtils {
         .where((e) => e.id == targetQuality)
         .toList();
 
-    final targetVideo = targetQaVideoList.firstWhere(
-      (e) => targetDecode.codes.any(e.codecs!.startsWith),
-      orElse: () => targetQaVideoList.first,
+    final targetVideo = selectVideoVariant(
+      targetQaVideoList,
+      targetDecode,
+      allowTenBit: HdrSupport.allowsHdrQuality,
     );
 
     // Diagnostic only in debug builds: makes it possible to confirm from the
