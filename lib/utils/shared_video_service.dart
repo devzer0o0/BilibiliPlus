@@ -21,6 +21,9 @@ abstract final class SharedVideoService {
   /// Messages read per conversation, newest first.
   static const int messagesPerSession = 20;
 
+  /// The user whose shares the home section shows: StepGo.
+  static const int stepGoUid = 3546605619776050;
+
   static Future<List<SharedVideo>> load() async {
     final sessions = await ImGrpc.sessionMain();
     if (sessions is! Success<SessionMainReply>) return const [];
@@ -46,7 +49,9 @@ abstract final class SharedVideoService {
     }
     final list = byBvid.values.toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    return list;
+    // Only StepGo's shares belong in the section; anything forwarded by other
+    // people stays in the messages and out of the feed.
+    return list.where((v) => v.senderId == stepGoUid).toList();
   }
 
   static Future<List<SharedVideo>> _fromSession(Session session) async {
@@ -57,12 +62,28 @@ abstract final class SharedVideoService {
     if (res is! Success<RspSessionMsg>) return const [];
 
     final messages = res.response.messages.take(messagesPerSession);
-    final senderName = _displayName(session);
+    final sessionName = _displayName(session);
     return SharedVideoParser.parsePage(
       messages,
-      senderNameOf: (_) => senderName,
-      senderIdOf: (_) => talkerId,
+      // Attribute each message to whoever actually sent it. Using the talker id
+      // for the whole thread credited every share in the conversation to the
+      // other person, including the ones this account sent.
+      senderNameOf: (m) => _senderName(session, sessionName, m),
+      senderIdOf: (m) => _senderId(talkerId, m),
     );
+  }
+
+  /// The uid that sent [m], falling back to the conversation's talker when the
+  /// message carries none (older payloads omit it).
+  static int _senderId(int talkerId, Msg m) =>
+      m.senderUid.toInt() > 0 ? m.senderUid.toInt() : talkerId;
+
+  /// A one-to-one thread only knows the other person's name, so a message from
+  /// the account itself is labelled separately instead of borrowing that name.
+  static String _senderName(Session session, String sessionName, Msg m) {
+    final uid = m.senderUid.toInt();
+    if (uid <= 0) return sessionName;
+    return uid == session.id.privateId.talkerUid.toInt() ? sessionName : '我';
   }
 
   /// Falls back to the id when the account has no usable nickname, rather than
