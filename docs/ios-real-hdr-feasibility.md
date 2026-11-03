@@ -103,8 +103,30 @@ completely different cause, which is what made this take two rounds to find.
 Both are now correct and the predicate keys off `CVImageBufferTransferFunction`
 containing `2084` (PQ) or `HLG`.
 
+### Confirmed in the simulator after the fix
+
+The earlier claim that the simulator cannot decode 10-bit HEVC was wrong - it
+was the `hev1` sample entry all along. With the fourcc rewritten, the lab page
+reports:
+
+```text
+hdr=true  edr=true  ready=true
+xfer=SMPTE_ST_2084_PQ  prim=ITU_R_2020  3840x2160  src=assembled-4194304
+```
+
+So AVPlayerItem reaches readyToPlay, the layer has EDR requested, and the
+track reports PQ / BT.2020 at 4K. The native path is wired correctly.
+
 ### Still unverified
 
-The picture itself. The simulator does not decode 10-bit HEVC, so `readyToPlay`
-cannot be reached there and the metadata can only be read from the file on a
-host. A device run is required to see `hdr=true` on screen.
+The picture itself, for two reasons:
+
+1. The plugin fetches only a 4 MB prefix, which is roughly a second of 4K, so
+   there is little to see and nothing to scrub. Full playback needs the whole
+   segment list, not a prefix.
+2. Whether the panel actually shows extended range - visibly brighter highlights
+   - cannot be judged from a screenshot, which is tone-mapped to 8-bit on the
+   way out. EDR requested plus PQ metadata is the strongest programmatic
+   evidence available; the visual claim needs a device in a dark room.
+
+Audio is not connected either: only the video track is fetched.
