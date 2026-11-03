@@ -130,3 +130,62 @@ The picture itself, for two reasons:
    evidence available; the visual claim needs a device in a dark room.
 
 Audio is not connected either: only the video track is fetched.
+
+## Where this ended up
+
+The native path is now the one the app actually uses for 10-bit renditions, and
+most of what was open above has since been closed or explained.
+
+### Verified on the simulator
+
+| Capability | Evidence |
+| --- | --- |
+| Reaches the native path from a real page | deep link into a video page, `hdr=true` |
+| PQ / BT.2020 / 3840x2160 | `xfer=SMPTE_ST_2084_PQ prim=ITU_R_2020` |
+| Picture renders | layer frame follows the view; picture appears |
+| Plays through a whole part | 43s, 63s, 76s, 97s checkpoints all advancing |
+| Audio | `audio=playing-...` alongside the video |
+| Pause and resume | clock held at 15.753s for ten seconds, then resumed |
+| Seek | 13.8s -> 60.0s in one step, then continued |
+| Progress reaches the controls | position and duration written back each poll |
+| Danmaku scrolls | `BV1C8xn6YEDA` (HDR + dense comments): rows moving over a live 4K frame |
+
+### The bugs that made this take as long as it did
+
+1. `hev1` vs `hvc1`. AVFoundation refuses the former; one fourcc swap fixed
+   `isPlayable` and the colour metadata.
+2. Wrong extension keys. `TransferFunction` is empty; the value lives under
+   `CVImageBufferTransferFunction`. This produced the same false "no HDR"
+   symptom from an unrelated cause.
+3. `sidx` offsets. `version` was read at the type field, so `count` came out
+   as 21764 and every fragment range was wrong.
+4. A layer frame set once at zero. CALayer sublayers do not follow their
+   superlayer, so nothing was drawn until `layoutSubviews` drove it.
+5. Rx writes during build. `onReady` wrote three observables inside the Obx
+   that owns the surface, recreating the platform view mid-assembly.
+
+### Two measurements that lied
+
+- Three identical screenshot crops read as "the picture is frozen". The crop was
+  of a static band; the clock was advancing the whole time.
+- Text over the picture read as danmaku. It was the video's own FPS overlay -
+  the test title is a quality comparison that films one.
+
+Both were fixed by watching a written log instead of a screenshot, and by
+picking a title whose content cannot be mistaken for UI.
+
+### Still not proven
+
+- **Subtitles on this path.** The renderer exists and is unit tested, but no
+  tried title both selects the native path and ships a subtitle track:
+  `BV1b24y1w73N` has none and `BV1C8xn6YEDA` has none either.
+- **Visible extended range.** A screenshot is tone-mapped to 8-bit on the way
+  out, so EDR requested plus PQ metadata is as far as evidence goes; the
+  brightness claim needs a panel in front of a person.
+
+### A note on durations
+
+`x/web-interface/view` reports `duration` as the sum of a multi-part video's
+pages, not the length of the page being played. Reading it as one video's length
+made a 98-second part look like a truncated 392-second film and sent two rounds
+after a "97 second cap" that did not exist.
