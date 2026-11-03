@@ -62,7 +62,12 @@ check_pick() {
   fi
 }
 
-check_pick BV1b24y1w73N 125 0 120 "HDR blocked with tone mapping off"
+# On iOS the HDR ladder is handed to AVPlayerLayer, which composites extended
+# range for real, so 125 is served whether or not the tone-mapping fallback is
+# enabled. The gate that used to matter was the 8-bit texture path; it no longer
+# applies, and asserting 120 here would be asserting the old behaviour.
+check_pick BV1b24y1w73N 125 0 125 "HDR served natively (tone mapping off)"
+check_pick BV1b24y1w73N 125 1 125 "HDR served natively (tone mapping on)"
 check_pick BV1b24y1w73N 120 0 120 "4K honoured with tone mapping off"
 
 echo
