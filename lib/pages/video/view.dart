@@ -23,6 +23,7 @@ import 'package:PiliPlus/models_new/pgc/pgc_info_model/result.dart';
 import 'package:PiliPlus/models_new/video/video_tag/data.dart';
 import 'package:PiliPlus/pages/common/common_intro_controller.dart';
 import 'package:PiliPlus/pages/danmaku/view.dart';
+import 'package:PiliPlus/pages/video/widgets/native_subtitle_overlay.dart';
 import 'package:PiliPlus/pages/episode_panel/view.dart';
 import 'package:PiliPlus/pages/video/ai_conclusion/view.dart';
 import 'package:PiliPlus/pages/video/controller.dart';
@@ -1286,6 +1287,30 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
             ),
           ),
         ),
+        // Subtitles are drawn by mpv on the normal path, and mpv is not
+        // playing here - so the cue is looked up and drawn in Flutter instead.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Obx(() {
+              final index = videoDetailController.vttSubtitlesIndex.value;
+              if (index <= 0) return const SizedBox.shrink();
+              _nativeCues ??= videoDetailController.nativeSubtitleCues();
+              return FutureBuilder(
+                future: _nativeCues,
+                builder: (context, snap) {
+                  final cues = snap.data;
+                  if (cues == null || cues.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return NativeSubtitleOverlay(
+                    controller: plPlayerController!,
+                    cues: cues,
+                  );
+                },
+              );
+            }),
+          ),
+        ),
         // The controls stay in Flutter; only what they drive changes. mpv is
         // not the player here, so play/pause/seek are mirrored onto the native
         // surface through the controller.
@@ -1371,6 +1396,9 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
 
   /// The platform view id while a native HDR surface is on screen.
   int? _hdrPlayerId;
+
+  /// Loaded once per HDR session; the cue list does not change while playing.
+  Future<List<({double from, double to, String text})>>? _nativeCues;
 
   @override
   Widget build(BuildContext context) {

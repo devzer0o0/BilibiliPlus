@@ -33,6 +33,7 @@ import 'package:PiliPlus/models_new/video/video_detail/data.dart';
 import 'package:PiliPlus/models_new/video/video_detail/episode.dart' as ugc;
 import 'package:PiliPlus/models_new/video/video_pbp/data.dart';
 import 'package:PiliPlus/models_new/video/video_play_info/subtitle.dart';
+import 'package:PiliPlus/pages/video/widgets/native_subtitle_overlay.dart';
 import 'package:PiliPlus/models_new/video/video_stein_edgeinfo/data.dart';
 import 'package:PiliPlus/pages/audio/view.dart';
 import 'package:PiliPlus/pages/common/publish/publish_route.dart';
@@ -1081,6 +1082,25 @@ class VideoDetailController extends GetxController
   late final vttSubtitlesIndex = (-1).obs;
   late final showVP = true.obs;
   late final viewPointList = <ViewPointSegment>[].obs;
+
+  /// The cue list for the subtitle the user picked, for the native HDR path.
+  ///
+  /// The mpv path hands the track to the player and lets it render; there is no
+  /// mpv on the native path, so the cues are read here and drawn in Flutter.
+  Future<List<({double from, double to, String text})>> nativeSubtitleCues() async {
+    final index = vttSubtitlesIndex.value;
+    if (index <= 0) return const [];
+    var subtitle = vttSubtitles[index - 1];
+    if (subtitle == null) {
+      final url = subtitles[index - 1].subtitleUrl;
+      if (url == null) return const [];
+      final result = await VideoHttp.getSubtitles(url);
+      if (result == null) return const [];
+      subtitle = (isData: true, id: result);
+      vttSubtitles[index - 1] = subtitle;
+    }
+    return parseNativeSubtitle(subtitle.id);
+  }
 
   // 设定字幕轨道
   Future<void> setSubtitle(int index) async {
