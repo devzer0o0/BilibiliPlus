@@ -84,52 +84,47 @@ final class HdrVideoController {
     load(url: url)
   }
 
-  /// A bilibili HDR rendition is a DASH track: the URL points at a single
-  /// fragment, so AVPlayer on its own sees no moov and reports 0x0. The
-  /// initialisation range is fetched first and the first media segment appended,
-  /// which produces something AVFoundation can read.
+  /// A bilibili HDR rendition is a DASH track: a moov followed by one moof+mdat
+  /// per fragment. AVPlayer cannot be pointed at the URL directly, so the track
+  /// is fetched fragment by fragment (see DashAssembler) and written to a file.
   private func load(url: URL) {
-    var request = URLRequest(url: url)
-    request.setValue("https://www.bilibili.com", forHTTPHeaderField: "Referer")
-    request.setValue(
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
-      forHTTPHeaderField: "User-Agent"
-    )
-    // Ask for a generous prefix: the ftyp/moov sits at the front.
-    request.setValue("bytes=0-4194303", forHTTPHeaderField: "Range")
+    let headers = [
+      "Referer": "https://www.bilibili.com",
+      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+    ]
 
-    URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+    DashAssembler.assemble(url: url, headers: headers) { [weak self] result in
       guard let self else { return }
-      guard let data, !data.isEmpty else {
+      guard let result, !result.data.isEmpty else {
         DispatchQueue.main.async {
-          self.sourceNote = "fetch-empty"
+          self.sourceNote = "assemble-failed"
           self.finish(with: AVPlayerItem(url: url))
         }
         return
       }
-      let bytes = data.count
+
+      let bytes = result.data.count
+      let fragments = result.fragments
       let file = FileManager.default.temporaryDirectory
         .appendingPathComponent("hdr_\(UUID().uuidString).mp4")
-      // bilibili serves HDR as 'hev1', which AVFoundation refuses to play
-      // (isPlayable == false, presentationSize 0x0) even though the bitstream
-      // is identical to 'hvc1'. Rewriting the sample entry fourcc is enough;
-      // the parameter sets already live in hvcC.
-      let patched = HdrVideoController.asHvc1(data)
-      do {
-        try patched.write(to: file)
-      } catch {
-        DispatchQueue.main.async { self.finish(with: AVPlayerItem(url: url)) }
+      // bilibili serves HDR as 'hev1', which AVFoundation refuses to play even
+      // though the bitstream is identical to 'hvc1'. The parameter sets already
+      // live in hvcC, so rewriting the fourcc is enough.
+      let patched = HdrVideoController.asHvc1(result.data)
+      guard (try? patched.write(to: file)) != nil else {
+        DispatchQueue.main.async {
+          self.sourceNote = "write-failed"
+          self.finish(with: AVPlayerItem(url: url))
+        }
         return
       }
       DispatchQueue.main.async {
         self.assembled = file
-        self.sourceNote = "assembled-\(bytes)"
+        self.sourceNote = "fragments=\(fragments) bytes=\(bytes)"
         self.finish(with: AVPlayerItem(url: file))
       }
-    }.resume()
+    }
   }
-
-  private var statusObserver: NSKeyValueObservation?
 
   private func finish(with item: AVPlayerItem) {
     // The item reports 0x0 and no format descriptions until it is ready, so
@@ -145,6 +140,8 @@ final class HdrVideoController {
   /// Set once AVPlayerItem reaches readyToPlay, which is when its tracks and
   /// format descriptions can actually be read.
   private(set) var didBecomeReady = false
+
+  private var statusObserver: NSKeyValueObservation?
 
   func play() { player.play() }
   func pause() { player.pause() }
