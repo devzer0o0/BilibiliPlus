@@ -1289,10 +1289,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   Future<void> pause({bool notify = true, bool isInterrupt = false}) async {
     // Mirror first: on the native path there is no mpv controller, and awaiting
     // a null one before this ran meant the command could be skipped entirely.
-    debugPrint(
-      'PAUSE_MIRROR native=${nativeControl != null} '
-      'mpv=${_videoPlayerController != null}',
-    );
     nativeControl?.call('pause');
     await _videoPlayerController?.pause();
     playerStatus = .paused;

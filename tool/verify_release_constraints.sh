@@ -27,12 +27,26 @@ BID=$(plutil -extract CFBundleIdentifier raw "$APP/Info.plist" 2>/dev/null)
 echo "== AV1 framework =="
 AV="$APP/Frameworks/Avcodec.framework/Avcodec"
 if [ -f "$AV" ]; then
-  ABI=$(otool -L "$APP/Runner" 2>/dev/null | grep -o 'Avcodec.framework/Avcodec (compatibility version [0-9.]*, current version [0-9.]*)' | head -1)
-  note "linked: $ABI"
-  case "$ABI" in
-    *"current version 61.3.100"*) note "ABI 61.3.100 as vendored" ;;
-    *) bad "unexpected ABI in '$ABI'" ;;
-  esac
+  # Read the ABI off the framework itself. Runner does not link Avcodec
+  # directly - libmpv loads it - so grepping Runner's load commands always came
+  # back empty and reported a failure for a bundle that was in fact correct.
+  ABI=$(otool -l "$AV" 2>/dev/null | grep -A2 LC_BUILD_VERSION \
+    | grep -o 'current version [0-9.]*' | head -1)
+  if [ -z "$ABI" ]; then
+    # Fall back to the dylib's own compatibility/current version line.
+    ABI=$(otool -D "$AV" 2>/dev/null | tail -1)
+  fi
+  ID=$(otool -l "$AV" 2>/dev/null | grep -A4 LC_ID_DYLIB \
+    | grep -o 'current version [0-9.]*' | head -1)
+  note "framework id: ${ID:-unknown}"
+  if [ -n "$ID" ]; then
+    case "$ID" in
+      *"61.3.100"*) note "ABI 61.3.100 as vendored" ;;
+      *) bad "unexpected ABI in '$ID'" ;;
+    esac
+  else
+    bad "could not read the framework ABI"
+  fi
   EXPORTS=$(nm -gU "$AV" 2>/dev/null | wc -l | tr -d ' ')
   [ "$EXPORTS" = "359" ] \
     && note "exports = $EXPORTS" \
