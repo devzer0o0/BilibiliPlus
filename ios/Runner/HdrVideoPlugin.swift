@@ -293,8 +293,22 @@ final class HdrVideoViewFactory: NSObject, FlutterPlatformViewFactory {
   }
 }
 
+final class HdrContainerView: UIView {
+  /// The AVPlayerLayer whose frame has to follow this view.
+  ///
+  /// A CALayer sublayer does not resize with its superlayer the way a subview
+  /// does, so setting the frame once at init left it 0x0: the view was added
+  /// but nothing was ever drawn into it.
+  var playerLayer: CALayer?
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    playerLayer?.frame = bounds
+  }
+}
+
 final class HdrVideoPlatformView: NSObject, FlutterPlatformView {
-  private let container = UIView()
+  private let container = HdrContainerView()
 
   init(frame: CGRect, viewId: Int64, args: [String: Any]) {
     super.init()
@@ -313,6 +327,7 @@ final class HdrVideoPlatformView: NSObject, FlutterPlatformView {
     let controller = HdrVideoController(url: url, audioUrl: audioUrl)
     HdrVideoPlugin.controllers[viewId] = controller
 
+    container.playerLayer = controller.layer
     controller.layer.frame = container.bounds
     container.layer.addSublayer(controller.layer)
   }
