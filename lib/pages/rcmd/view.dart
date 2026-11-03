@@ -6,6 +6,7 @@ import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
 import 'package:PiliPlus/common/widgets/video_card/video_card_v.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/pages/rcmd/controller.dart';
+import 'package:PiliPlus/pages/rcmd/widgets/shared_video_strip.dart';
 import 'package:PiliPlus/utils/grid.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:get/get.dart';
@@ -39,6 +40,20 @@ class _RcmdPageState extends State<RcmdPage>
           controller: controller.scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
+            // Shared videos sit above the grid and are not part of its six.
+            Obx(() {
+              final shared = controller.sharedVideos;
+              if (shared.isEmpty) return const SliverToBoxAdapter();
+              return SliverToBoxAdapter(
+                child: SharedVideoStrip(
+                  videos: shared,
+                  onOpen: (video) {
+                    controller.onSharedVideoOpened(video.bvid);
+                    openSharedVideo(video);
+                  },
+                ),
+              );
+            }),
             SliverPadding(
               padding: const .only(top: Style.cardSpace, bottom: 100),
               sliver: Obx(
