@@ -138,11 +138,10 @@ class _HdrVideoSurfaceState extends State<HdrVideoSurface> {
         if (info == null || !mounted) continue;
         final parsed = HdrPlaybackInfo.fromMap(info);
         widget.onReady?.call(parsed);
-        // The audio track is assembled after the video one, so stopping at
-        // ready would freeze the report before audio resolves.
-        if (parsed.ready && parsed.audio != 'none' && parsed.audio != 'queued') {
-          return;
-        }
+        // Deliberately does not stop at ready. The log this feeds is how
+        // playback progress is observed, and leaving the loop early hides a
+        // stall - which is exactly what happened: two lines were written and the
+        // halt after them looked like the player stopping.
       } catch (_) {
         if (mounted) setState(() => _failed = true);
         return;

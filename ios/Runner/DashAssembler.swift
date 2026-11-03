@@ -14,7 +14,13 @@ enum DashAssembler {
 
   /// How many fragments to fetch. Each is five seconds here, so this is roughly
   /// a minute - enough to watch without pulling a whole 40 MB track.
-  static let maxFragments = 12
+  static let maxFragments = 19
+
+  /// Last parsed index summary, surfaced through the controller for diagnosis.
+  nonisolated(unsafe) static var debugNote = ""
+
+  nonisolated(unsafe) static var lastStatus = 0
+  nonisolated(unsafe) static var lastRange = -1
 
   static func assemble(
     url: URL,
@@ -40,6 +46,8 @@ enum DashAssembler {
 
       let want = min(index.count, maxFragments)
       var offset = headerEnd  // first fragment starts right after the sidx
+      debugNote = "count=\(index.count) headEnd=\(headerEnd) "
+        + "headLen=\(head.count) status=\(lastStatus) range=\(lastRange)"
 
       var collected = 0
       var indexRef = 0
@@ -53,8 +61,11 @@ enum DashAssembler {
         let start = offset
         let end = offset + size - 1
         fetch(url: url, headers: headers, range: start...end) { body in
-          guard let body, body.count > 0 else {
-            // Return what we have: a shorter file still plays.
+          // The byte count must match what the sidx declared. Accepting a short
+          // body would still advance the offset by the declared size, so every
+          // later fragment would be read from the wrong place - which is how a
+          // 19-fragment track came back as 1.5 MB and stopped after ten seconds.
+          guard let body, body.count == size else {
             completion(collected > 0 ? Result(data: out, fragments: collected) : nil)
             return
           }
@@ -82,7 +93,18 @@ enum DashAssembler {
     }
     request.setValue("bytes=\(range.lowerBound)-\(range.upperBound)",
                      forHTTPHeaderField: "Range")
-    URLSession.shared.dataTask(with: request) { data, _, _ in
+    // Fragments are several megabytes; the default timeout gives up mid-body
+    // on a slow link and the short body then desynchronises every offset after
+    // it. Wait for the whole range instead.
+    request.timeoutInterval = 60
+    URLSession.shared.dataTask(with: request) { data, response, _ in
+      // The status matters: a 200 means the server ignored the Range header and
+      // sent the whole track, which would shift every offset derived from the
+      // requested range.
+      if let http = response as? HTTPURLResponse {
+        lastStatus = http.statusCode
+        lastRange = range.lowerBound
+      }
       completion(data)
     }.resume()
   }
@@ -125,11 +147,13 @@ enum DashAssembler {
     let sidxEnd = marker + boxSize
     guard boxSize > 0, sidxEnd <= bytes.count else { return nil }
 
-    var p = marker + 8
-    guard p + 8 <= bytes.count else { return nil }
-    p += 4
-    p += 4
-    let version = bytes[marker + 4]
+    // marker is the box start:
+    //   [size:4][type:4][version+flags:4][refID:4][timescale:4]
+    //   [earliest_pto][first_offset][reserved:2][count:2]
+    // Reading version at marker+4 landed on the type field, which made every
+    // offset after it wrong and produced a fragment count in the thousands.
+    let version = bytes[marker + 8]
+    var p = marker + 20
     p += (version == 0) ? 8 : 16
     guard p + 2 <= bytes.count else { return nil }
     p += 2
