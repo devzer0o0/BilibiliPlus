@@ -14,6 +14,8 @@ class HdrPlaybackInfo {
     this.transfer,
     this.width = 0,
     this.height = 0,
+    this.source = '',
+    this.ready = false,
   });
 
   final bool hdr;
@@ -23,6 +25,12 @@ class HdrPlaybackInfo {
   final int width;
   final int height;
 
+  /// What the native loader fetched.
+  final String source;
+
+  /// Whether AVPlayerItem reported readyToPlay.
+  final bool ready;
+
   factory HdrPlaybackInfo.fromMap(Map<Object?, Object?> map) => HdrPlaybackInfo(
     hdr: map['hdr'] == true,
     edrRequested: map['edrRequested'] == true,
@@ -30,12 +38,14 @@ class HdrPlaybackInfo {
     transfer: map['transfer'] as String?,
     width: (map['width'] as num?)?.toInt() ?? 0,
     height: (map['height'] as num?)?.toInt() ?? 0,
+    source: map['source'] as String? ?? '',
+    ready: map['ready'] == true,
   );
 
   @override
   String toString() =>
       'hdr=$hdr edr=$edrRequested ${primaries ?? '-'}/${transfer ?? '-'} '
-      '${width}x$height';
+      '${width}x$height src=$source';
 }
 
 /// A video surface backed by AVPlayerLayer instead of mpv.

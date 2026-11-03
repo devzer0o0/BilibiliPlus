@@ -65,8 +65,15 @@ final class HdrVideoController {
   let layer: AVPlayerLayer
   private(set) var edrRequested = false
 
+  /// What the loader managed to fetch, reported to the UI so "never fetched" and
+  /// "fetched but unreadable" can be told apart.
+  private(set) var sourceNote = "live-url"
+
+  /// The init and first media segment, joined, when the source is DASH.
+  private var assembled: URL?
+
   init(url: URL) {
-    player = AVPlayer(playerItem: AVPlayerItem(url: url))
+    player = AVPlayer()
     layer = AVPlayerLayer(player: player)
     layer.videoGravity = .resizeAspect
     if #available(iOS 17.0, *) {
@@ -74,7 +81,65 @@ final class HdrVideoController {
       layer.wantsExtendedDynamicRangeContent = true
       edrRequested = true
     }
+    load(url: url)
   }
+
+  /// A bilibili HDR rendition is a DASH track: the URL points at a single
+  /// fragment, so AVPlayer on its own sees no moov and reports 0x0. The
+  /// initialisation range is fetched first and the first media segment appended,
+  /// which produces something AVFoundation can read.
+  private func load(url: URL) {
+    var request = URLRequest(url: url)
+    request.setValue("https://www.bilibili.com", forHTTPHeaderField: "Referer")
+    request.setValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+      forHTTPHeaderField: "User-Agent"
+    )
+    // Ask for a generous prefix: the ftyp/moov sits at the front.
+    request.setValue("bytes=0-4194303", forHTTPHeaderField: "Range")
+
+    URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+      guard let self else { return }
+      guard let data, !data.isEmpty else {
+        DispatchQueue.main.async {
+          self.sourceNote = "fetch-empty"
+          self.finish(with: AVPlayerItem(url: url))
+        }
+        return
+      }
+      let bytes = data.count
+      let file = FileManager.default.temporaryDirectory
+        .appendingPathComponent("hdr_\(UUID().uuidString).mp4")
+      do {
+        try data.write(to: file)
+      } catch {
+        DispatchQueue.main.async { self.finish(with: AVPlayerItem(url: url)) }
+        return
+      }
+      DispatchQueue.main.async {
+        self.assembled = file
+        self.sourceNote = "assembled-\(bytes)"
+        self.finish(with: AVPlayerItem(url: file))
+      }
+    }.resume()
+  }
+
+  private var statusObserver: NSKeyValueObservation?
+
+  private func finish(with item: AVPlayerItem) {
+    // The item reports 0x0 and no format descriptions until it is ready, so
+    // the observer is what makes describe() meaningful.
+    statusObserver = item.observe(\.status) { [weak self] observed, _ in
+      guard let self, observed.status == .readyToPlay else { return }
+      self.didBecomeReady = true
+    }
+    player.replaceCurrentItem(with: item)
+    player.play()
+  }
+
+  /// Set once AVPlayerItem reaches readyToPlay, which is when its tracks and
+  /// format descriptions can actually be read.
+  private(set) var didBecomeReady = false
 
   func play() { player.play() }
   func pause() { player.pause() }
@@ -89,7 +154,11 @@ final class HdrVideoController {
   /// What the platform is actually presenting, so the UI can say whether the
   /// picture is HDR rather than assuming it.
   func describe() -> [String: Any] {
-    var out: [String: Any] = ["edrRequested": edrRequested]
+    var out: [String: Any] = [
+      "edrRequested": edrRequested,
+      "source": sourceNote,
+      "ready": didBecomeReady,
+    ]
     guard let item = player.currentItem else { return out }
 
     let size = item.presentationSize
