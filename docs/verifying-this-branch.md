@@ -230,13 +230,30 @@ colours are normal. With the gate closed the ladder settles on an SDR rung, so
 this confirms the gate behaves on hardware - it does **not** yet confirm that
 the tone-mapped 10-bit path renders correctly.
 
-### Still not answered
+### Answered: the tone-mapped path renders correctly on hardware
 
-Whether 125/126/129 render correctly through VideoToolbox with tone mapping
-**on**. That needs the switch toggled on the device, and there is no CLI path
-to change an app preference on a physical iPhone: `devicectl` has no file push,
-`idb` will not attach, and the accessibility tree is unreachable. The options
-are to drive the UI by hand, or to ship a build whose default is pre-set.
+The open question above was whether 125/126/129 render correctly through
+VideoToolbox with tone mapping **on**. Rerun with the default forced on for one
+build (`--dart-define=TEMP_HDR_DEFAULT_ON`, since a physical device has no CLI
+way to toggle a preference):
+
+```text
+hashes:   835ac7c3bdca3c0a / d5924c9db04a4a84 / 45e2ddb419788ebc   (3 distinct)
+colours:  RGB(68,66,73)  RGB(12,10,6)  RGB(41,17,7)
+```
+
+The frame is a neon-lit rain scene with correct colour - no green cast, and the
+UI around it renders normally. The middle sample is dark because that moment of
+the video is dark.
+
+So the original defect - 10-bit planes reaching an 8-bit texture - is handled on
+the hardware path as well as in the software renderer, and the tone-mapping
+options do real work there.
+
+Both runs were driven by `tool/device_playback_check.sh`, which refuses a
+locked phone and judges playback by consecutive frames differing. That detail
+matters: a locked phone still returns screenshots, which is how an earlier
+attempt produced a plausible-looking but meaningless result.
 
 ## Why the QA_PICK line matters
 
