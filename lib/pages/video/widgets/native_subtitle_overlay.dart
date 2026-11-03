@@ -29,10 +29,21 @@ class NativeSubtitleOverlay extends StatefulWidget {
 class _NativeSubtitleOverlayState extends State<NativeSubtitleOverlay> {
   String _text = '';
 
+  /// Resolves the subscription. `ever` registers on the controller, which
+  /// outlives this widget, so dropping the handle would leave a callback firing
+  /// setState on a disposed State after every rebuild.
+  late final Worker _worker;
+
   @override
   void initState() {
     super.initState();
-    ever(widget.controller.position, _update);
+    _worker = ever(widget.controller.position, _update);
+  }
+
+  @override
+  void dispose() {
+    _worker.dispose();
+    super.dispose();
   }
 
   void _update(int ms) {
