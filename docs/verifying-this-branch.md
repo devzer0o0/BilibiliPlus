@@ -179,6 +179,65 @@ builder takes a single argument and whose shape is shared with three other
 sheets. Changing that shared signature to close a cosmetic gap was not worth the
 blast radius. Recorded so the next person does not rediscover it.
 
+## Physical-device check (iPhone Air, iOS 27.2)
+
+For most of this branch's life the attached iPhone reported `Locked` and
+`devicectl` refused to launch anything. Once unlocked the following worked, and
+the first real hardware playback evidence was obtained.
+
+### Installing at all
+
+`flutter build ios --release --no-codesign` produces a bundle that
+`devicectl device install app` rejects with `ApplicationVerificationFailed`.
+The project sets `DEVELOPMENT_TEAM = ""`, but a valid
+`Apple Development: ...` identity is present, so a plain
+`flutter build ios --release` lets Xcode pick it and the install succeeds.
+
+Debug builds install but refuse to start from the home screen:
+
+> In iOS 14+, debug mode Flutter apps can only be launched from Flutter
+> tooling, IDEs with Flutter plugins or from Xcode.
+
+and `devicectl` counts as none of those. Profile and release run normally.
+
+### Getting a video on screen without touching the phone
+
+`idb` is simulator-only. `devicectl device process launch` has `--payload-url`,
+which hands a URL to the app at launch:
+
+```sh
+xcrun devicectl device process launch --device <udid> \
+  --payload-url https://www.bilibili.com/video/BV1b24y1w73N \
+  com.example.pilipalax
+```
+
+That opens the video page directly - the deep-link path that cannot work in the
+simulator, because here the URL is passed to the process rather than routed by
+the system.
+
+### Result: 4K/HDR plays on hardware without a green screen
+
+Title BV1b24y1w73N (a 4K/HDR AVC/HEVC/AV1 comparison upload), profile build,
+tone-mapping switch **off** so the gate is closed:
+
+```text
+player-area hashes:  8829e3e1 / 7cb1ea4e / 7f844bf1   (all different = playing)
+colour samples:      RGB(114,38,22)  RGB(69,41,70)    -> ok, not green
+```
+
+Consecutive frames differ, so this is playback and not a poster, and the
+colours are normal. With the gate closed the ladder settles on an SDR rung, so
+this confirms the gate behaves on hardware - it does **not** yet confirm that
+the tone-mapped 10-bit path renders correctly.
+
+### Still not answered
+
+Whether 125/126/129 render correctly through VideoToolbox with tone mapping
+**on**. That needs the switch toggled on the device, and there is no CLI path
+to change an app preference on a physical iPhone: `devicectl` has no file push,
+`idb` will not attach, and the accessibility tree is unreachable. The options
+are to drive the UI by hand, or to ship a build whose default is pre-set.
+
 ## Why the QA_PICK line matters
 
 A frame can look correct while the player is on the wrong rendition: 360p,
