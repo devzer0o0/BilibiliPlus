@@ -50,6 +50,7 @@ import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/models/heart_beat_type.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
+import 'package:PiliPlus/plugin/pl_player/widgets/hdr_video_surface.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/connectivity_utils.dart';
@@ -114,6 +115,14 @@ class VideoDetailController extends GetxController
   // 请求返回的视频信息
   late PlayUrlModel data;
   final RxBool videoState = false.obs;
+
+  /// Non-null when the selected rendition is 10-bit and must be played by
+  /// AVPlayerLayer rather than mpv's 8-bit texture.
+  final Rxn<String> nativeHdrUrl = Rxn<String>();
+
+  /// What the native layer reports it is presenting, for the UI to state
+  /// honestly whether the picture is HDR.
+  final Rxn<HdrPlaybackInfo> hdrPlaybackInfo = Rxn<HdrPlaybackInfo>();
 
   /// Why the last playurl request failed, shown in place of the player.
   ///
@@ -983,6 +992,13 @@ class VideoDetailController extends GetxController
       currentVideoQa.value = VideoQuality.fromCode(targetQuality);
       _setVideoHeight();
       videoUrl = VideoUtils.getCdnUrl(firstVideo.playUrls);
+
+      // An HDR rendition cannot be drawn through the 8-bit Flutter texture, so
+      // the page hands it to AVPlayerLayer instead of mpv. Recorded here, where
+      // the chosen rendition's codec is known.
+      nativeHdrUrl.value = VideoUtils.isTenBitCodec(firstVideo.codecs)
+          ? videoUrl
+          : null;
 
       AudioItem? firstAudio;
       final audioList = dash.audio;

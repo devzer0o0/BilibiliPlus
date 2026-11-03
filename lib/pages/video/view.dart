@@ -67,6 +67,7 @@ import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
+import 'package:PiliPlus/plugin/pl_player/widgets/hdr_video_surface.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/play_error_panel.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
@@ -1227,6 +1228,37 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     );
   }
 
+  /// HDR playback goes through AVPlayerLayer because a Flutter texture on iOS
+  /// is 8-bit and cannot carry extended range.
+  Widget _hdrSurface(String url, double width, double height) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: HdrVideoSurface(
+            url: url,
+            autoPlay: videoDetailController.autoPlay,
+            onReady: (info) {
+              videoDetailController.hdrPlaybackInfo.value = info;
+            },
+          ),
+        ),
+        // mpv still owns the overlay controls, so the header stays usable.
+        Positioned.fill(
+          child: IgnorePointer(
+            ignoring: true,
+            child: HeaderControl(
+              key: videoDetailController.headerCtrKey,
+              isPortrait: true,
+              controller: plPlayerController!,
+              videoDetailCtr: videoDetailController,
+              heroTag: '',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget plPlayer({
     required double width,
     required double height,
@@ -1245,6 +1277,10 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
               !videoDetailController.autoPlay ||
               plPlayerController?.videoController == null
           ? _playErrorPanel(width, height)
+          // A 10-bit rendition cannot go through the 8-bit texture, so it is
+          // drawn by AVPlayerLayer. Everything else stays on mpv.
+          : videoDetailController.nativeHdrUrl.value != null
+          ? _hdrSurface(videoDetailController.nativeHdrUrl.value!, width, height)
           : PLVideoPlayer(
               maxWidth: width,
               maxHeight: height,
