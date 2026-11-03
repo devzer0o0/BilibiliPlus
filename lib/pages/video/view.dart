@@ -1262,6 +1262,24 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
             key: const ValueKey('hdr-surface-probe'),
           ),
         ),
+        // Danmaku is drawn by Flutter, not by mpv, so it keeps working on this
+        // path - but only if it is mounted here. It used to live inside
+        // PLVideoPlayer, which this branch replaces.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Obx(
+              () => PlDanmaku(
+                key: ValueKey(videoDetailController.cid.value),
+                isPipMode: false,
+                cid: videoDetailController.cid.value,
+                playerController: plPlayerController!,
+                isFullScreen: plPlayerController!.isFullScreen.value,
+                isFileSource: videoDetailController.isFileSource,
+                size: Size(width, height),
+              ),
+            ),
+          ),
+        ),
         // The controls stay in Flutter; only what they drive changes. mpv is
         // not the player here, so play/pause/seek are mirrored onto the native
         // surface through the controller.
