@@ -269,10 +269,24 @@ abstract final class Pref {
     return preferCodecs;
   }
 
-  static String get hardwareDecoding => _setting.get(
-    SettingBoxKey.hardwareDecoding,
-    defaultValue: HwDecType.kHwdec,
-  );
+  static String get hardwareDecoding {
+    final stored = _setting.get(
+      SettingBoxKey.hardwareDecoding,
+      defaultValue: HwDecType.kHwdec,
+    );
+    // Upgrades keep the value written by an older build, so changing the default
+    // only reaches fresh installs. An install left on `videotoolbox,auto` keeps
+    // the software fallback that makes 4K stutter, and no setting the user
+    // touched is involved - the old default did it.
+    //
+    // Only the plain default is rewritten. A copy-back or another backend is a
+    // deliberate choice and stays as it is.
+    if (Platform.isIOS &&
+        (stored == 'videotoolbox,auto' || stored == 'videotoolbox,auto-safe')) {
+      return HwDecType.videotoolbox.hwdec;
+    }
+    return stored;
+  }
 
   static String get videoSync =>
       _setting.get(SettingBoxKey.videoSync, defaultValue: 'display-resample');

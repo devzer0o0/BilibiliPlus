@@ -166,6 +166,37 @@ final class HdrVideoController {
     }
     player.replaceCurrentItem(with: item)
     player.play()
+    startClockSync()
+  }
+
+  /// Keeps the two players on one clock.
+  ///
+  /// Video and audio are separate AVPlayers because bilibili serves them
+  /// separately. Each runs its own clock, so they drift apart as soon as either
+  /// buffers or stalls - which is heard as lip-sync that gets worse over time.
+  /// Video is treated as correct and audio is nudged back whenever it strays.
+  private func startClockSync() {
+    clockTimer?.invalidate()
+    clockTimer = Timer.scheduledTimer(
+      withTimeInterval: 1.0, repeats: true
+    ) { [weak self] _ in
+      self?.syncAudioToVideo()
+    }
+  }
+
+  private func syncAudioToVideo() {
+    guard let audio = audioPlayer,
+          audio.timeControlStatus == .playing,
+          player.timeControlStatus == .playing
+    else { return }
+    let drift = audio.currentTime().seconds - player.currentTime().seconds
+    guard drift.isFinite else { return }
+    audioDriftMs = Int(drift * 1000)
+    // Under a tenth of a second is inaudible; correcting it would be a
+    // discontinuity the listener notices more than the offset itself.
+    guard abs(drift) > 0.1 else { return }
+    let target = player.currentTime()
+    audio.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
   }
 
   /// Set once AVPlayerItem reaches readyToPlay, which is when its tracks and
@@ -183,12 +214,18 @@ final class HdrVideoController {
     audioPlayer?.pause()
   }
   func seek(toMs ms: Int) {
-    player.seek(to: CMTime(value: CMTimeValue(ms), timescale: 1000))
+    let target = CMTime(value: CMTimeValue(ms), timescale: 1000)
+    player.seek(to: target)
+    // The two players seek independently, so a seek that moved only the video
+    // would leave the audio where it was and desynchronise them outright.
+    audioPlayer?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
   }
   func dispose() {
     player.pause()
     audioPlayer?.pause()
     audioPlayer = nil
+    clockTimer?.invalidate()
+    clockTimer = nil
     statusObserver?.invalidate()
     statusObserver = nil
     player.replaceCurrentItem(with: nil)
@@ -256,6 +293,13 @@ final class HdrVideoController {
   /// nothing else.
   private var audioPlayer: AVPlayer?
 
+  /// Drives the audio-to-video correction; see startClockSync().
+  private var clockTimer: Timer?
+
+  /// Last measured audio-minus-video offset, in milliseconds. Reported through
+  /// describe() so lip-sync can be checked without listening on a device.
+  private(set) var audioDriftMs = 0
+
   /// Reported to Dart so audio success and failure are distinguishable.
   private(set) var audioNote = "none"
 
@@ -306,6 +350,7 @@ final class HdrVideoController {
       "edrRequested": edrRequested,
       "source": sourceNote,
       "audio": audioNote,
+      "audioDriftMs": audioDriftMs,
       "ready": didBecomeReady,
       // Playback state, so a stalled picture is distinguishable from a paused
       // one without having to guess from a screenshot.
@@ -381,6 +426,16 @@ final class HdrContainerView: UIView {
   override func layoutSubviews() {
     super.layoutSubviews()
     playerLayer?.frame = bounds
+  }
+
+  /// Let touches through to the Flutter widgets stacked above.
+  ///
+  /// A platform view is a real UIView in the hierarchy and by default takes
+  /// every touch inside its bounds. The controls are Flutter widgets drawn on
+  /// top, so the tap that should reveal the progress bar landed here and went
+  /// nowhere. The layer only displays video and needs no gestures of its own.
+  override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+    nil
   }
 }
 

@@ -46,7 +46,22 @@ enum HwDecType {
       ? kDebugMode
             ? autoSafe.hwdec
             : [mediacodec.hwdec, autoSafe.hwdec].join(',')
+      : Platform.isIOS
+      ? iosDefault
       : auto.hwdec;
+
+  /// What iOS should ask mpv for.
+  ///
+  /// `auto` and `auto-safe` may quietly fall back to software decoding, and on
+  /// an iPhone that fallback is what turns a 4K60 stream into a slideshow. A
+  /// device log caught exactly that: one HEVC sample decoded as
+  /// `hwdec=no / yuv420p` while every other sample reported
+  /// `hwdec=videotoolbox`, which matches the intermittent `hw=no` seen here.
+  ///
+  /// Naming the backend removes the fallback. VideoToolbox on this hardware
+  /// covers H.264, HEVC and VP9, and AV1 through the backported framework in
+  /// ios/av1, so there is nothing left that needs to fall back.
+  static const String iosDefault = 'videotoolbox';
 
   /// Values that mean anything on the current platform.
   ///
