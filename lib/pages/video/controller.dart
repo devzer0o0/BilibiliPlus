@@ -50,6 +50,7 @@ import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/models/heart_beat_type.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/hdr_support.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/hdr_video_surface.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/utils/accounts.dart';
@@ -897,10 +898,14 @@ class VideoDetailController extends GetxController
       preferCodecs = isWiFi ? Pref.preferCodecs : Pref.preferCodecsCellular;
     }
 
-    // Ask for the highest SDR quality. Requesting HDR (129/126/125) makes the
-    // server return 10-bit HLG streams that the current 8-bit render path
-    // draws as a green image.
-    final result = await _getVideoUrl(VideoQuality.super8k.code);
+    // Ask for HDR when the platform can present it; otherwise stay on the
+    // highest SDR rung, because a 10-bit stream through the 8-bit texture is
+    // what turned the picture green.
+    final result = await _getVideoUrl(
+      HdrSupport.nativeHdrPath
+          ? VideoQuality.hdr.code
+          : VideoQuality.super8k.code,
+    );
 
     if (result case Success(:final response)) {
       data = response;
