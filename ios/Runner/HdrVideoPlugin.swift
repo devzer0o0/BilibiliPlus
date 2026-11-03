@@ -72,7 +72,10 @@ final class HdrVideoController {
   /// The init and first media segment, joined, when the source is DASH.
   private var assembled: URL?
 
-  init(url: URL) {
+  /// The separate audio track bilibili serves for DASH.
+  private var audioUrl: URL?
+
+  init(url: URL, audioUrl: URL? = nil) {
     player = AVPlayer()
     layer = AVPlayerLayer(player: player)
     layer.videoGravity = .resizeAspect
@@ -81,6 +84,7 @@ final class HdrVideoController {
       layer.wantsExtendedDynamicRangeContent = true
       edrRequested = true
     }
+    self.audioUrl = audioUrl
     load(url: url)
   }
 
@@ -122,6 +126,7 @@ final class HdrVideoController {
         self.assembled = file
         self.sourceNote = "fragments=\(fragments) bytes=\(bytes)"
         self.finish(with: AVPlayerItem(url: file))
+        self.startAudioIfAny()
       }
     }
   }
@@ -143,13 +148,21 @@ final class HdrVideoController {
 
   private var statusObserver: NSKeyValueObservation?
 
-  func play() { player.play() }
-  func pause() { player.pause() }
+  func play() {
+    player.play()
+    audioPlayer?.play()
+  }
+  func pause() {
+    player.pause()
+    audioPlayer?.pause()
+  }
   func seek(toMs ms: Int) {
     player.seek(to: CMTime(value: CMTimeValue(ms), timescale: 1000))
   }
   func dispose() {
     player.pause()
+    audioPlayer?.pause()
+    audioPlayer = nil
     layer.removeFromSuperlayer()
   }
 
@@ -172,12 +185,52 @@ final class HdrVideoController {
     return out
   }
 
+  /// Plays the DASH audio track on its own player, kept in step with the
+  /// video one.
+  ///
+  /// Muxing the two into an AVMutableComposition does not work for this
+  /// content: the video track is HEVC with an hev1 entry, which the
+  /// composition pipeline refuses. Two players cost one extra sync point and
+  /// nothing else.
+  private var audioPlayer: AVPlayer?
+
+  /// Reported to Dart so audio success and failure are distinguishable.
+  private(set) var audioNote = "none"
+
+  private func startAudioIfAny() {
+    guard let audioUrl else { return }
+    let headers = [
+      "Referer": "https://www.bilibili.com",
+      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+    ]
+    DashAssembler.assemble(url: audioUrl, headers: headers) { [weak self] result in
+      guard let self else { return }
+      guard let result, !result.data.isEmpty else {
+        DispatchQueue.main.async { self.audioNote = "assemble-failed" }
+        return
+      }
+      let file = FileManager.default.temporaryDirectory
+        .appendingPathComponent("audio_\(UUID().uuidString).mp4")
+      guard (try? result.data.write(to: file)) != nil else {
+        DispatchQueue.main.async { self.audioNote = "write-failed" }
+        return
+      }
+      DispatchQueue.main.async {
+        let player = AVPlayer(url: file)
+        player.seek(to: self.player.currentTime())
+        player.play()
+        self.audioPlayer = player
+        self.audioNote = "playing-\(result.data.count)"
+      }
+    }
+  }
   /// What the platform is actually presenting, so the UI can say whether the
   /// picture is HDR rather than assuming it.
   func describe() -> [String: Any] {
     var out: [String: Any] = [
       "edrRequested": edrRequested,
       "source": sourceNote,
+      "audio": audioNote,
       "ready": didBecomeReady,
     ]
     guard let item = player.currentItem else { return out }
@@ -248,8 +301,10 @@ final class HdrVideoPlatformView: NSObject, FlutterPlatformView {
       let raw = args["url"] as? String,
       let url = URL(string: raw)
     else { return }
+    let audioRaw = args["audioUrl"] as? String
+    let audioUrl = audioRaw.flatMap { URL(string: $0) }
 
-    let controller = HdrVideoController(url: url)
+    let controller = HdrVideoController(url: url, audioUrl: audioUrl)
     HdrVideoPlugin.controllers[viewId] = controller
 
     controller.layer.frame = container.bounds

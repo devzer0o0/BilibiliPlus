@@ -15,6 +15,7 @@ class HdrPlaybackInfo {
     this.width = 0,
     this.height = 0,
     this.source = '',
+    this.audio = '',
     this.ready = false,
   });
 
@@ -28,6 +29,9 @@ class HdrPlaybackInfo {
   /// What the native loader fetched.
   final String source;
 
+  /// What happened to the DASH audio track.
+  final String audio;
+
   /// Whether AVPlayerItem reported readyToPlay.
   final bool ready;
 
@@ -39,6 +43,7 @@ class HdrPlaybackInfo {
     width: (map['width'] as num?)?.toInt() ?? 0,
     height: (map['height'] as num?)?.toInt() ?? 0,
     source: map['source'] as String? ?? '',
+    audio: map['audio'] as String? ?? '',
     ready: map['ready'] == true,
   );
 
@@ -58,6 +63,7 @@ class HdrVideoSurface extends StatefulWidget {
   const HdrVideoSurface({
     super.key,
     required this.url,
+    this.audioUrl,
     this.autoPlay = true,
     this.onReady,
   });
@@ -65,6 +71,9 @@ class HdrVideoSurface extends StatefulWidget {
   /// The rendition URL. A DASH segment URL plays only its own fragment, so
   /// callers should prefer a full-file or HLS URL where one is available.
   final String url;
+
+  /// bilibili serves DASH audio as its own track; without it the picture is silent.
+  final String? audioUrl;
   final bool autoPlay;
   final ValueChanged<HdrPlaybackInfo>? onReady;
 
@@ -105,6 +114,24 @@ class _HdrVideoSurfaceState extends State<HdrVideoSurface> {
     }
   }
 
+
+  Future<void> _poll(int id) async {
+    for (var i = 0; i < 40; i++) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      try {
+        final info = await _control.invokeMethod<Map>('describe', {'id': id});
+        if (info == null || !mounted) continue;
+        final parsed = HdrPlaybackInfo.fromMap(info);
+        widget.onReady?.call(parsed);
+        if (parsed.ready) return;
+      } catch (_) {
+        if (mounted) setState(() => _failed = true);
+        return;
+      }
+    }
+  }
+
   @override
   void dispose() {
     final id = _id;
@@ -121,25 +148,17 @@ class _HdrVideoSurfaceState extends State<HdrVideoSurface> {
     }
     return UiKitView(
       viewType: _viewType,
-      creationParams: {'url': widget.url},
+      creationParams: {'url': widget.url, 'audioUrl': widget.audioUrl},
       creationParamsCodec: const StandardMessageCodec(),
       onPlatformViewCreated: (id) {
         _id = id;
         if (widget.autoPlay) {
           _control.invokeMethod('play', {'id': id}).catchError((_) => null);
         }
-        // Read back what the platform is presenting, so the caller can tell the
-        // user whether the picture really is HDR rather than assuming it.
-        Future<void>.delayed(const Duration(seconds: 2), () async {
-          try {
-            final info = await _control.invokeMethod<Map>('describe', {'id': id});
-            if (mounted && info != null) {
-              widget.onReady?.call(HdrPlaybackInfo.fromMap(info));
-            }
-          } catch (_) {
-            if (mounted) setState(() => _failed = true);
-          }
-        });
+        // Poll rather than read once: assembling twelve fragments takes longer
+        // than any fixed delay that would also feel responsive, and the first
+        // read always lands before the file exists.
+        _poll(id);
       },
     );
   }
