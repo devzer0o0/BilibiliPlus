@@ -154,6 +154,10 @@ final class HdrVideoController {
   }
 
   private func finish(with item: AVPlayerItem) {
+    // Invalidate the previous observation before replacing it: KVO retains its
+    // target, so a leftover observer keeps the old item (and its buffers) alive
+    // for as long as this controller lives.
+    statusObserver?.invalidate()
     // The item reports 0x0 and no format descriptions until it is ready, so
     // the observer is what makes describe() meaningful.
     statusObserver = item.observe(\.status) { [weak self] observed, _ in
@@ -185,6 +189,9 @@ final class HdrVideoController {
     player.pause()
     audioPlayer?.pause()
     audioPlayer = nil
+    statusObserver?.invalidate()
+    statusObserver = nil
+    player.replaceCurrentItem(with: nil)
     layer.removeFromSuperlayer()
 
     // The assembled track is a hundred megabytes and is written per playback.
@@ -394,6 +401,10 @@ final class HdrVideoPlatformView: NSObject, FlutterPlatformView {
     let audioRaw = args["audioUrl"] as? String
     let audioUrl = audioRaw.flatMap { URL(string: $0) }
 
+    // Drop any controller left under this id before replacing it. Flutter
+    // reuses view ids, and a leaked entry would keep a whole AVPlayer, its
+    // layer and the assembled file alive for the rest of the session.
+    HdrVideoPlugin.controllers.removeValue(forKey: viewId)?.dispose()
     let controller = HdrVideoController(url: url, audioUrl: audioUrl)
     HdrVideoPlugin.controllers[viewId] = controller
 
