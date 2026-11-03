@@ -1241,6 +1241,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
             onReady: (info) {
               videoDetailController.hdrPlaybackInfo.value = info;
             },
+            key: const ValueKey('hdr-surface-probe'),
           ),
         ),
         // mpv still owns the overlay controls, so the header stays usable.
@@ -1252,7 +1253,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
               isPortrait: true,
               controller: plPlayerController!,
               videoDetailCtr: videoDetailController,
-              heroTag: '',
+              heroTag: heroTag,
             ),
           ),
         ),
@@ -1273,15 +1274,19 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     onPopInvokedWithResult:
         videoDetailController.plPlayerController.onPopInvokedWithResult,
     child: Obx(
-      () =>
-          !videoDetailController.videoState.value ||
-              !videoDetailController.autoPlay ||
-              plPlayerController?.videoController == null
-          ? _playErrorPanel(width, height)
-          // A 10-bit rendition cannot go through the 8-bit texture, so it is
-          // drawn by AVPlayerLayer. Everything else stays on mpv.
-          : videoDetailController.nativeHdrUrl.value != null
-          ? _hdrSurface(videoDetailController.nativeHdrUrl.value!, width, height)
+      () {
+        final hdrUrl = videoDetailController.nativeHdrUrl.value;
+        // HDR is drawn by AVPlayerLayer, which does not need mpv's texture
+        // controller - so that requirement only applies to the mpv branch.
+        if (hdrUrl != null &&
+            videoDetailController.videoState.value &&
+            videoDetailController.autoPlay) {
+          return _hdrSurface(hdrUrl, width, height);
+        }
+        return !videoDetailController.videoState.value ||
+                !videoDetailController.autoPlay ||
+                plPlayerController?.videoController == null
+            ? _playErrorPanel(width, height)
           : PLVideoPlayer(
               maxWidth: width,
               maxHeight: height,
@@ -1310,7 +1315,8 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                     ),
               showEpisodes: showEpisodes,
               showViewPoints: showViewPoints,
-            ),
+            );
+      },
     ),
   );
 
