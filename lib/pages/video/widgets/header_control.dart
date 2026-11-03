@@ -997,7 +997,12 @@ class HeaderControlState extends State<HeaderControl>
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 20,
                       ),
-                      title: Text(item.newDesc!),
+                      // newDesc is null for formats the catalogue lists but
+                      // never describes - the row then rendered as a blank
+                      // line, and the '!' would throw in a release build.
+                      title: Text(
+                        item.newDesc ?? '画质 ${item.quality ?? '?'}',
+                      ),
                       trailing: isCurr
                           ? Icon(
                               Icons.done,

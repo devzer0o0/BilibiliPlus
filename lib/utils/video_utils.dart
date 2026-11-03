@@ -240,11 +240,18 @@ abstract final class VideoUtils {
   ///
   /// Streams the render path cannot draw get [unsupportedLabel] instead of
   /// their own description, so the row reads as unavailable rather than broken.
+  /// Formats the catalogue lists without a container string used to render an
+  /// empty trailing label, which left a visibly blank slot; fall back to the id.
   static String qualityRowLabel(
     int? quality,
     String? format,
     String unsupportedLabel,
-  ) => isSupportedVideoQuality(quality) ? (format ?? '') : unsupportedLabel;
+  ) {
+    if (!isSupportedVideoQuality(quality)) return unsupportedLabel;
+    final fmt = format?.trim();
+    if (fmt != null && fmt.isNotEmpty) return fmt;
+    return '#${quality ?? '?'}';
+  }
 
   /// Picks the entry to play from the variants of one quality id.
   ///

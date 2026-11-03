@@ -63,8 +63,16 @@ void main() {
       expect(VideoUtils.qualityRowLabel(125, 'HDR 真彩', '暂不支持'), '暂不支持');
     });
 
-    test('a missing description falls back to an empty string', () {
-      expect(VideoUtils.qualityRowLabel(120, null, '暂不支持'), '');
+    test('a missing description falls back to the quality id', () {
+      // This used to assert '', which is what produced visibly blank rows in
+      // the quality sheet when the catalogue omitted the container string.
+      final label = VideoUtils.qualityRowLabel(120, null, '暂不支持');
+      expect(label, isNotEmpty);
+      expect(label, contains('120'));
+    });
+
+    test('a blank description is treated as missing', () {
+      expect(VideoUtils.qualityRowLabel(120, '   ', '暂不支持'), contains('120'));
     });
 
     test('the label and the enabled flag agree for every rung', () {
