@@ -203,7 +203,13 @@ final class HdrVideoController {
       "Referer": "https://www.bilibili.com",
       "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
     ]
-    DashAssembler.assemble(url: audioUrl, headers: headers) { [weak self] result in
+    DashAssembler.assemble(
+      url: audioUrl,
+      headers: headers,
+      onFragment: { [weak self] done, total in
+        DispatchQueue.main.async { self?.audioNote = "fetching \(done)/\(total)" }
+      }
+    ) { [weak self] result in
       guard let self else { return }
       guard let result, !result.data.isEmpty else {
         DispatchQueue.main.async { self.audioNote = "assemble-failed" }

@@ -124,7 +124,11 @@ class _HdrVideoSurfaceState extends State<HdrVideoSurface> {
         if (info == null || !mounted) continue;
         final parsed = HdrPlaybackInfo.fromMap(info);
         widget.onReady?.call(parsed);
-        if (parsed.ready) return;
+        // The audio track is assembled after the video one, so stopping at
+        // ready would freeze the report before audio resolves.
+        if (parsed.ready && parsed.audio != 'none' && parsed.audio != 'queued') {
+          return;
+        }
       } catch (_) {
         if (mounted) setState(() => _failed = true);
         return;

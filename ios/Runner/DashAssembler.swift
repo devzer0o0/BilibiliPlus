@@ -19,6 +19,7 @@ enum DashAssembler {
   static func assemble(
     url: URL,
     headers: [String: String],
+    onFragment: ((Int, Int) -> Void)? = nil,
     completion: @escaping (Result?) -> Void
   ) {
     // The front of the track: ftyp, moov and sidx all live in the first few KB.
@@ -61,6 +62,7 @@ enum DashAssembler {
           offset += size
           indexRef += 1
           collected += 1
+          onFragment?(collected, want)
           next()
         }
       }
