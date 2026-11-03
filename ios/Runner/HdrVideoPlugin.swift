@@ -23,6 +23,25 @@ final class HdrVideoPlugin: NSObject, FlutterPlugin {
       binaryMessenger: registrar.messenger()
     )
     registrar.addMethodCallDelegate(HdrVideoPlugin(), channel: channel)
+    sweepStaleFiles()
+  }
+
+  /// Removes tracks left by an earlier run.
+  ///
+  /// dispose() only runs when the widget is torn down in order. A force-quit or
+  /// a termination by the system skips it, and each such run leaves a hundred
+  /// megabytes behind - two of them already filled the container. Sweeping at
+  /// start makes the leak self-healing instead of cumulative.
+  private static func sweepStaleFiles() {
+    let tmp = FileManager.default.temporaryDirectory
+    guard let names = try? FileManager.default.contentsOfDirectory(
+      at: tmp, includingPropertiesForKeys: nil
+    ) else { return }
+    for url in names {
+      let n = url.lastPathComponent
+      guard n.hasPrefix("hdr_") || n.hasPrefix("audio_") else { continue }
+      try? FileManager.default.removeItem(at: url)
+    }
   }
 
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -74,6 +93,9 @@ final class HdrVideoController {
 
   /// The separate audio track bilibili serves for DASH.
   private var audioUrl: URL?
+
+  /// The assembled audio file, removed on dispose like the video one.
+  private var audioFile: URL?
 
   init(url: URL, audioUrl: URL? = nil) {
     player = AVPlayer()
@@ -164,6 +186,17 @@ final class HdrVideoController {
     audioPlayer?.pause()
     audioPlayer = nil
     layer.removeFromSuperlayer()
+
+    // The assembled track is a hundred megabytes and is written per playback.
+    // Leaving it behind filled the container with copies of the same video.
+    if let assembled {
+      try? FileManager.default.removeItem(at: assembled)
+      self.assembled = nil
+    }
+    if let audioFile {
+      try? FileManager.default.removeItem(at: audioFile)
+      self.audioFile = nil
+    }
   }
 
   /// Appends a line to Documents/hdr_state.log.
@@ -248,6 +281,7 @@ final class HdrVideoController {
         player.seek(to: self.player.currentTime())
         player.play()
         self.audioPlayer = player
+        self.audioFile = file
         self.audioNote = "playing-\(result.data.count)"
       }
     }

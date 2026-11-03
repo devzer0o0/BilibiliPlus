@@ -369,6 +369,11 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
         PlPlayerController.updatePlayCount();
       }
     }
+    // The surface is gone, so nothing may keep calling into it. Leaving the
+    // closure set means a late pause/seek reaches a released platform view.
+    plPlayerController?.nativeControl = null;
+    _nativeCues = null;
+
     removeObserverMobile(this);
 
     super.dispose();
