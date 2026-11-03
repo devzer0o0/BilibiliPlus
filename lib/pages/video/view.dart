@@ -1250,6 +1250,12 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                 if (info.duration > 0) {
                   p.duration.value = (info.duration * 1000).round();
                 }
+                // The danmaku layer advances on playerStatus.isPlaying, and on
+                // this path play() is never called - the native player starts
+                // itself. Without this the position moves but nothing scrolls.
+                p.playerStatus = info.rate > 0
+                    ? PlayerStatus.playing
+                    : PlayerStatus.paused;
               });
             },
             onCreated: (id) {
