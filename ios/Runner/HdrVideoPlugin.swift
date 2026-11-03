@@ -271,6 +271,9 @@ final class HdrVideoController {
       "rate": player.rate,
       "timeControl": player.timeControlStatus.rawValue,
       "seconds": CMTimeGetSeconds(player.currentTime()),
+      "duration": player.currentItem.map {
+        CMTimeGetSeconds($0.duration)
+      } ?? 0,
     ]
     guard let item = player.currentItem else { return out }
 

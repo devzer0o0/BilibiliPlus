@@ -67,6 +67,20 @@ class HdrPlaybackInfo {
       '${width}x$height src=$source';
 }
 
+/// Plays, pauses or seeks the native player behind [HdrVideoSurface].
+///
+/// The overlay controls go through here because mpv is not the thing drawing
+/// the picture on this path.
+Future<void> hdrVideoCommand(int id, String method, [Map? args]) async {
+  try {
+    await const MethodChannel(
+      'pilipilus/hdr_video/control',
+    ).invokeMethod(method, {'id': id, ...?args});
+  } catch (_) {
+    // The view may already be gone; nothing to recover.
+  }
+}
+
 /// A video surface backed by AVPlayerLayer instead of mpv.
 ///
 /// Used only for 10-bit HDR renditions: mpv draws into an 8-bit BGRA Flutter
@@ -80,6 +94,7 @@ class HdrVideoSurface extends StatefulWidget {
     this.audioUrl,
     this.autoPlay = true,
     this.onReady,
+    this.onCreated,
   });
 
   /// The rendition URL. A DASH segment URL plays only its own fragment, so
@@ -90,6 +105,9 @@ class HdrVideoSurface extends StatefulWidget {
   final String? audioUrl;
   final bool autoPlay;
   final ValueChanged<HdrPlaybackInfo>? onReady;
+
+  /// Fired once the platform view exists, so the caller can drive it.
+  final ValueChanged<int>? onCreated;
 
   /// Whether the platform can host this at all. The texture path remains the
   /// fallback everywhere else.
@@ -149,6 +167,12 @@ class _HdrVideoSurfaceState extends State<HdrVideoSurface> {
     }
   }
 
+  /// The platform view id, so the page can drive the same player the widget
+  /// created.
+  int? get playerId => _id;
+
+
+
   @override
   void dispose() {
     final id = _id;
@@ -169,6 +193,7 @@ class _HdrVideoSurfaceState extends State<HdrVideoSurface> {
       creationParamsCodec: const StandardMessageCodec(),
       onPlatformViewCreated: (id) {
         _id = id;
+        widget.onCreated?.call(id);
         if (widget.autoPlay) {
           _control.invokeMethod('play', {'id': id}).catchError((_) => null);
         }

@@ -1239,22 +1239,39 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
             audioUrl: videoDetailController.nativeHdrAudioUrl.value,
             autoPlay: videoDetailController.autoPlay,
             onReady: (info) {
-              videoDetailController.hdrPlaybackInfo.value = info;
+              // These are Rx writes, and this callback runs inside the Obx that
+              // builds the surface. Writing here disposes and recreates the
+              // platform view mid-assembly, which is why the loader stopped
+              // after one poll. Post-frame defers the rebuild off the build.
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                videoDetailController.hdrPlaybackInfo.value = info;
+                final p = videoDetailController.plPlayerController;
+                p.position.value = (info.seconds * 1000).round();
+                if (info.duration > 0) {
+                  p.duration.value = (info.duration * 1000).round();
+                }
+              });
+            },
+            onCreated: (id) {
+              // A plain field assignment, not setState: rebuilding here would
+              // recreate the platform view and restart the stream.
+              _hdrPlayerId = id;
+              videoDetailController.plPlayerController.nativeControl =
+                  (method, [args]) => hdrVideoCommand(id, method, args);
             },
             key: const ValueKey('hdr-surface-probe'),
           ),
         ),
-        // mpv still owns the overlay controls, so the header stays usable.
+        // The controls stay in Flutter; only what they drive changes. mpv is
+        // not the player here, so play/pause/seek are mirrored onto the native
+        // surface through the controller.
         Positioned.fill(
-          child: IgnorePointer(
-            ignoring: true,
-            child: HeaderControl(
-              key: videoDetailController.headerCtrKey,
-              isPortrait: true,
-              controller: plPlayerController!,
-              videoDetailCtr: videoDetailController,
-              heroTag: heroTag,
-            ),
+          child: HeaderControl(
+            key: videoDetailController.headerCtrKey,
+            isPortrait: true,
+            controller: plPlayerController!,
+            videoDetailCtr: videoDetailController,
+            heroTag: heroTag,
           ),
         ),
       ],
@@ -1327,6 +1344,9 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   late double maxHeight;
   bool isWindowMode = false;
   late EdgeInsets padding;
+
+  /// The platform view id while a native HDR surface is on screen.
+  int? _hdrPlayerId;
 
   @override
   Widget build(BuildContext context) {

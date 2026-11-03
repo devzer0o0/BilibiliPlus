@@ -19,9 +19,6 @@ enum DashAssembler {
   /// Last parsed index summary, surfaced through the controller for diagnosis.
   nonisolated(unsafe) static var debugNote = ""
 
-  nonisolated(unsafe) static var lastStatus = 0
-  nonisolated(unsafe) static var lastRange = -1
-
   static func assemble(
     url: URL,
     headers: [String: String],
@@ -35,6 +32,11 @@ enum DashAssembler {
         return
       }
       guard let index = parseSidx(head) else {
+        // Report why: a missing sidx and a malformed one look identical from
+        // the caller, which then falls back to the raw URL and plays nothing.
+        debugNote =
+          "no-sidx len=\(head.count) "
+          + "hasSidx=\(head.range(of: Data("sidx".utf8)) != nil)"
         completion(nil)
         return
       }
@@ -47,12 +49,18 @@ enum DashAssembler {
       let want = min(index.count, maxFragments)
       var offset = headerEnd  // first fragment starts right after the sidx
       debugNote = "count=\(index.count) headEnd=\(headerEnd) "
-        + "headLen=\(head.count) status=\(lastStatus) range=\(lastRange)"
+        + "headLen=\(head.count)"
 
       var collected = 0
       var indexRef = 0
 
-      func next() {
+      // A fragment that arrives short or not at all must not be dropped: the
+      // offset advances by the size the sidx declared, so skipping one puts
+      // every fragment after it in the wrong place. Retry the same range, and
+      // only give up on the whole track once it keeps failing.
+      let attempts = 3
+
+      func fetchFragment(_ attempt: Int) {
         if indexRef >= want {
           completion(Result(data: out, fragments: collected))
           return
@@ -60,24 +68,29 @@ enum DashAssembler {
         let size = index.sizes[indexRef]
         let start = offset
         let end = offset + size - 1
+        let ref = indexRef
         fetch(url: url, headers: headers, range: start...end) { body in
-          // The byte count must match what the sidx declared. Accepting a short
-          // body would still advance the offset by the declared size, so every
-          // later fragment would be read from the wrong place - which is how a
-          // 19-fragment track came back as 1.5 MB and stopped after ten seconds.
-          guard let body, body.count == size else {
-            completion(collected > 0 ? Result(data: out, fragments: collected) : nil)
+          if let body, body.count == size {
+            out.append(body)
+            offset += size
+            indexRef += 1
+            collected += 1
+            onFragment?(collected, want)
+            fetchFragment(0)
             return
           }
-          out.append(body)
-          offset += size
-          indexRef += 1
-          collected += 1
-          onFragment?(collected, want)
-          next()
+          if attempt + 1 < attempts {
+            fetchFragment(attempt + 1)
+            return
+          }
+          // Out of retries. Keep what has already been assembled rather than
+          // discarding it - a shorter file still plays, an empty one does not.
+          debugNote += " | frag\(ref) want=\(size) got=\(body?.count ?? -1)"
+            + " after \(attempts)"
+          completion(collected > 0 ? Result(data: out, fragments: collected) : nil)
         }
       }
-      next()
+      fetchFragment(0)
     }
   }
 
@@ -97,13 +110,17 @@ enum DashAssembler {
     // on a slow link and the short body then desynchronises every offset after
     // it. Wait for the whole range instead.
     request.timeoutInterval = 60
-    URLSession.shared.dataTask(with: request) { data, response, _ in
-      // The status matters: a 200 means the server ignored the Range header and
-      // sent the whole track, which would shift every offset derived from the
-      // requested range.
-      if let http = response as? HTTPURLResponse {
-        lastStatus = http.statusCode
-        lastRange = range.lowerBound
+    URLSession.shared.dataTask(with: request) { data, response, error in
+      // Surface transport failures: a timeout or a refused connection otherwise
+      // looks exactly like "the server sent nothing", and the caller silently
+      // falls back to the raw URL and plays an empty item.
+      if let error {
+        debugNote += " | err@\(range.lowerBound)=\(error.localizedDescription)"
+        completion(nil)
+        return
+      }
+      if let http = response as? HTTPURLResponse, http.statusCode != 206 {
+        debugNote += " | http@\(range.lowerBound)=\(http.statusCode)"
       }
       completion(data)
     }.resume()

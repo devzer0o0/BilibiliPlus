@@ -1217,6 +1217,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   /// 跳转至指定位置
   Future<void> seekTo(Duration position, {bool isSeek = true}) async {
+    nativeControl?.call('seek', {'ms': position.inMilliseconds});
     if (_playerCount == 0) {
       return;
     }
@@ -1269,6 +1270,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
 
     await _videoPlayerController?.play();
+    nativeControl?.call('play');
 
     audioSessionHandler?.setActive(true);
 
@@ -1276,8 +1278,16 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   /// 暂停播放
+  /// Non-null while a native AVPlayerLayer is drawing the picture.
+  ///
+  /// On that path mpv is not the player, so its play/pause/seek calls do
+  /// nothing visible. Each control still goes through this controller, so the
+  /// call is mirrored to the native surface here instead of at every button.
+  void Function(String method, [Map? args])? nativeControl;
+
   Future<void> pause({bool notify = true, bool isInterrupt = false}) async {
     await _videoPlayerController?.pause();
+    nativeControl?.call('pause');
     playerStatus = .paused;
 
     // 主动暂停时让出音频焦点
