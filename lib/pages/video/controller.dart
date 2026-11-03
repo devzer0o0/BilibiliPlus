@@ -864,6 +864,12 @@ class VideoDetailController extends GetxController
       return;
     }
     isQuerying = true;
+    // Every load starts by assuming the next rendition is SDR. Without this a
+    // switch to a non-HDR part would keep pointing at the previous part's
+    // native URL, and the surface would replay the video just left.
+    nativeHdrUrl.value = null;
+    nativeHdrAudioUrl.value = null;
+    hdrPlaybackInfo.value = null;
     try {
       await _queryVideoUrl(fromReset, autoFullScreenFlag);
     } catch (e, s) {
