@@ -110,8 +110,13 @@ final class HdrVideoController {
       let bytes = data.count
       let file = FileManager.default.temporaryDirectory
         .appendingPathComponent("hdr_\(UUID().uuidString).mp4")
+      // bilibili serves HDR as 'hev1', which AVFoundation refuses to play
+      // (isPlayable == false, presentationSize 0x0) even though the bitstream
+      // is identical to 'hvc1'. Rewriting the sample entry fourcc is enough;
+      // the parameter sets already live in hvcC.
+      let patched = HdrVideoController.asHvc1(data)
       do {
-        try data.write(to: file)
+        try patched.write(to: file)
       } catch {
         DispatchQueue.main.async { self.finish(with: AVPlayerItem(url: url)) }
         return
@@ -151,6 +156,25 @@ final class HdrVideoController {
     layer.removeFromSuperlayer()
   }
 
+  /// Swaps the HEVC sample entry fourcc from hev1 to hvc1.
+  ///
+  /// AVFoundation will not play hev1; the difference is only where the
+  /// parameter sets live, and hvcC carries them for both.
+  static func asHvc1(_ data: Data) -> Data {
+    let hev1 = Data("hev1".utf8)
+    let hvc1 = Data("hvc1".utf8)
+    var out = Data()
+    out.reserveCapacity(data.count)
+    var rest = data[...]
+    while let r = rest.range(of: hev1) {
+      out.append(contentsOf: rest[rest.startIndex..<r.lowerBound])
+      out.append(hvc1)
+      rest = rest[r.upperBound...]
+    }
+    out.append(contentsOf: rest)
+    return out
+  }
+
   /// What the platform is actually presenting, so the UI can say whether the
   /// picture is HDR rather than assuming it.
   func describe() -> [String: Any] {
@@ -173,8 +197,10 @@ final class HdrVideoController {
 
     let format = description as! CMFormatDescription
     if let ext = CMFormatDescriptionGetExtensions(format) as? [String: Any] {
-      let primaries = ext["ColorPrimaries"] as? String
-      let transfer = ext["TransferFunction"] as? String
+      // The CMFormatDescription extensions are keyed by the CVImageBuffer
+      // constants; "ColorPrimaries"/"TransferFunction" exist but hold nothing.
+      let primaries = ext["CVImageBufferColorPrimaries"] as? String
+      let transfer = ext["CVImageBufferTransferFunction"] as? String
       out["primaries"] = primaries
       out["transfer"] = transfer
       // PQ (HDR10) and HLG are the two extended-range transfer functions the
@@ -234,4 +260,5 @@ final class HdrVideoPlatformView: NSObject, FlutterPlatformView {
   }
 
   func view() -> UIView { container }
+
 }
