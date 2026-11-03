@@ -73,3 +73,38 @@ reported `ready = true` and `wantsExtendedDynamicRangeContent = true` was
 accepted, but `presentationSize` came back `0x0` for the bare DASH segment,
 which is why the metadata was read on the host instead of on the phone. All of
 that scaffolding was removed; `lib/` and `ios/` are unchanged.
+## Why the native HDR path needed a one-byte fix
+
+The AVPlayerLayer path fetched the DASH track correctly and requested EDR, yet
+`AVPlayerItem` never reached `readyToPlay`: `isPlayable` was false,
+`presentationSize` stayed `0x0` and the format descriptions carried no colour
+metadata.
+
+The track's sample entry is `hev1`. **AVFoundation will not play `hev1`** - only
+`hvc1`. The bitstream is identical; the difference is where the parameter sets
+sit, and `hvcC` carries them for both, so rewriting the fourcc is sufficient.
+
+Measured on the assembled clip, before and after that single change:
+
+```text
+before:  isPlayable=false   transfer=nil                 primaries=nil
+after:   isPlayable=true    transfer=SMPTE_ST_2084_PQ    primaries=ITU_R_2020   bits=10
+```
+
+### A second bug in the same function
+
+`describe()` read its colour metadata from the keys `"TransferFunction"` and
+`"ColorPrimaries"`. Those keys exist in the extension dictionary but are empty;
+the real values are under `"CVImageBufferTransferFunction"` and
+`"CVImageBufferColorPrimaries"`. That is why `hdr` read false even for a stream
+that is genuinely PQ/BT.2020 - the same symptom as the fourcc bug, from a
+completely different cause, which is what made this take two rounds to find.
+
+Both are now correct and the predicate keys off `CVImageBufferTransferFunction`
+containing `2084` (PQ) or `HLG`.
+
+### Still unverified
+
+The picture itself. The simulator does not decode 10-bit HEVC, so `readyToPlay`
+cannot be reached there and the metadata can only be read from the file on a
+host. A device run is required to see `hdr=true` on screen.
