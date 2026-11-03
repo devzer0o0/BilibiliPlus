@@ -120,6 +120,10 @@ class VideoDetailController extends GetxController
   /// AVPlayerLayer rather than mpv's 8-bit texture.
   final Rxn<String> nativeHdrUrl = Rxn<String>();
 
+  /// The DASH audio URL that goes with [nativeHdrUrl]. bilibili serves audio as
+  /// its own track, so the native player needs both.
+  final Rxn<String> nativeHdrAudioUrl = Rxn<String>();
+
   /// What the native layer reports it is presenting, for the UI to state
   /// honestly whether the picture is HDR.
   final Rxn<HdrPlaybackInfo> hdrPlaybackInfo = Rxn<HdrPlaybackInfo>();
@@ -999,6 +1003,7 @@ class VideoDetailController extends GetxController
       nativeHdrUrl.value = VideoUtils.isTenBitCodec(firstVideo.codecs)
           ? videoUrl
           : null;
+      nativeHdrAudioUrl.value = nativeHdrUrl.value == null ? null : audioUrl;
 
       AudioItem? firstAudio;
       final audioList = dash.audio;
@@ -1011,6 +1016,9 @@ class VideoDetailController extends GetxController
         currentAudioQa = AudioQuality.fromCode(firstAudio.id);
       } else {
         audioUrl = '';
+      }
+      if (nativeHdrUrl.value != null) {
+        nativeHdrAudioUrl.value = audioUrl;
       }
       await initPlayerIfNeeded(autoFullScreenFlag);
     } else {

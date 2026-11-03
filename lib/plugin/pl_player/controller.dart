@@ -860,9 +860,12 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       // HDR streams (HDR10/HLG, Dolby Vision) decode to 10-bit. The Darwin
       // VideoToolbox path hands frames to media_kit as p010, but the Flutter
       // texture is 8-bit BGRA, so without tone mapping the picture renders
-      // with swapped chroma (green). Only pay for the conversion when the user
-      // opted into HDR playback.
-      if (HdrSupport.allowsHdrQuality) ...HdrSupport.toneMappedPlayerOptions,
+      // with swapped chroma (green). Pay for the conversion only when the
+      // texture is actually going to draw the frames - on iOS the HDR ladder is
+      // handed to AVPlayerLayer instead, so mpv never sees them and the
+      // conversion would be wasted work.
+      if (HdrSupport.allowsHdrQuality && !HdrSupport.nativeHdrPath)
+        ...HdrSupport.toneMappedPlayerOptions,
     };
     final autosync = Pref.autosync;
     if (autosync != '0') {

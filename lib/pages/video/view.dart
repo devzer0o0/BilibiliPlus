@@ -1236,6 +1236,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
         Positioned.fill(
           child: HdrVideoSurface(
             url: url,
+            audioUrl: videoDetailController.nativeHdrAudioUrl.value,
             autoPlay: videoDetailController.autoPlay,
             onReady: (info) {
               videoDetailController.hdrPlaybackInfo.value = info;

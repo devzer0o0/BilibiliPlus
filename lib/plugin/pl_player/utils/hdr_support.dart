@@ -17,7 +17,17 @@ import 'package:PiliPlus/utils/storage_pref.dart';
 /// the texture path is 10-bit end to end, HDR stays opt-in behind this switch.
 abstract final class HdrSupport {
   /// Set to true once the Darwin texture path carries 10-bit frames.
+  ///
+  /// Still false: the Flutter texture is 8-bit and cannot. HDR is instead
+  /// handed to AVPlayerLayer (see [nativeHdrPath]), which is a different
+  /// renderer rather than a wider texture.
   static const bool nativeTenBitPath = false;
+
+  /// iOS 17 added `AVPlayerLayer.wantsExtendedDynamicRangeContent`, which is
+  /// the only public way to composite extended-range video. Where it exists the
+  /// HDR ladder plays for real, through the native layer, instead of being
+  /// tone-mapped down to SDR.
+  static bool get nativeHdrPath => Platform.isIOS;
 
   /// User switch: allow HDR qualities with the tone-mapped SDR fallback.
   ///
@@ -35,7 +45,7 @@ abstract final class HdrSupport {
 
   /// True when the quality ladder may offer 125/126/129 at all.
   static bool get allowsHdrQuality =>
-      supportsNativeHdr || supportsToneMappedHdr;
+      nativeHdrPath || supportsNativeHdr || supportsToneMappedHdr;
 
   /// mpv options required to render HDR through an 8-bit output.
   static Map<String, String> get toneMappedPlayerOptions => {
