@@ -145,6 +145,40 @@ plausible.
 
 The hook was removed afterwards; `lib/pages/main/view.dart` is unchanged.
 
+## The quality sheet was checked on screen
+
+After fixing the blank rows, the sheet was opened in the simulator against a
+real title:
+
+```text
+选择画质
+1080P 高码率      (current)
+1080P 高清        flv
+720P 准高清       flv720
+480P 标清         flv480
+360P 流畅         mp4
+```
+
+Every row reads as something; before the fix a run of rows after these was
+completely empty.
+
+### Reaching the controls at all
+
+Taps in the middle of the player do not reveal the control bar: `_onTapUp`
+routes them to the danmaku layer when a bullet comment sits under the finger,
+so the centre of the screen is effectively reserved. Tapping the **top-right
+corner** (about 390,130 on a 420 pt wide screen) shows the controls reliably.
+This is upstream behaviour, not a regression.
+
+### One thing deliberately left alone
+
+The sheet expands to the full available height, so a five-row ladder leaves a
+large empty area below it. Constraining it to the content height was attempted
+and reverted: the call goes through `MiniScaffold.showBottomSheet`, whose
+builder takes a single argument and whose shape is shared with three other
+sheets. Changing that shared signature to close a cosmetic gap was not worth the
+blast radius. Recorded so the next person does not rediscover it.
+
 ## Why the QA_PICK line matters
 
 A frame can look correct while the player is on the wrong rendition: 360p,
