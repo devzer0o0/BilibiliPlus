@@ -16,6 +16,10 @@ class HdrPlaybackInfo {
     this.height = 0,
     this.source = '',
     this.audio = '',
+    this.rate = 0,
+    this.timeControl = 0,
+    this.seconds = 0,
+    this.duration = 0,
     this.ready = false,
   });
 
@@ -32,6 +36,12 @@ class HdrPlaybackInfo {
   /// What happened to the DASH audio track.
   final String audio;
 
+  /// Playback state, so a stalled picture is distinguishable from a paused one.
+  final double rate;
+  final int timeControl;
+  final double seconds;
+  final double duration;
+
   /// Whether AVPlayerItem reported readyToPlay.
   final bool ready;
 
@@ -44,6 +54,10 @@ class HdrPlaybackInfo {
     height: (map['height'] as num?)?.toInt() ?? 0,
     source: map['source'] as String? ?? '',
     audio: map['audio'] as String? ?? '',
+    rate: (map['rate'] as num?)?.toDouble() ?? 0,
+    timeControl: (map['timeControl'] as num?)?.toInt() ?? 0,
+    seconds: (map['seconds'] as num?)?.toDouble() ?? 0,
+    duration: (map['duration'] as num?)?.toDouble() ?? 0,
     ready: map['ready'] == true,
   );
 

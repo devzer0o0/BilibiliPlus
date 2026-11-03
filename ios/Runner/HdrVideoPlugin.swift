@@ -166,6 +166,28 @@ final class HdrVideoController {
     layer.removeFromSuperlayer()
   }
 
+  /// Appends a line to Documents/hdr_state.log.
+  ///
+  /// A physical device gives no reliable log or stdout channel back to the
+  /// machine driving it, and a screenshot can only show one instant. A file in
+  /// the app container can be read afterwards and shows the trend.
+  private func logDescription(_ fields: [String: Any]) {
+    guard let documents = FileManager.default.urls(
+      for: .documentDirectory,
+      in: .userDomainMask
+    ).first else { return }
+    let file = documents.appendingPathComponent("hdr_state.log")
+    let line = "\(Date().timeIntervalSince1970) \(fields)\n"
+    guard let data = line.data(using: .utf8) else { return }
+    if let handle = try? FileHandle(forWritingTo: file) {
+      handle.seekToEndOfFile()
+      handle.write(data)
+      try? handle.close()
+    } else {
+      try? data.write(to: file)
+    }
+  }
+
   /// Swaps the HEVC sample entry fourcc from hev1 to hvc1.
   ///
   /// AVFoundation will not play hev1; the difference is only where the
@@ -233,11 +255,22 @@ final class HdrVideoController {
   /// What the platform is actually presenting, so the UI can say whether the
   /// picture is HDR rather than assuming it.
   func describe() -> [String: Any] {
+    let out = buildDescription()
+    logDescription(out)
+    return out
+  }
+
+  private func buildDescription() -> [String: Any] {
     var out: [String: Any] = [
       "edrRequested": edrRequested,
       "source": sourceNote,
       "audio": audioNote,
       "ready": didBecomeReady,
+      // Playback state, so a stalled picture is distinguishable from a paused
+      // one without having to guess from a screenshot.
+      "rate": player.rate,
+      "timeControl": player.timeControlStatus.rawValue,
+      "seconds": CMTimeGetSeconds(player.currentTime()),
     ]
     guard let item = player.currentItem else { return out }
 
