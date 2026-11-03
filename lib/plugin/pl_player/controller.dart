@@ -1269,8 +1269,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       await seekTo(Duration.zero, isSeek: false);
     }
 
-    await _videoPlayerController?.play();
+    // Mirrored before the await for the same reason as pause().
     nativeControl?.call('play');
+    await _videoPlayerController?.play();
 
     audioSessionHandler?.setActive(true);
 
@@ -1286,8 +1287,14 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   void Function(String method, [Map? args])? nativeControl;
 
   Future<void> pause({bool notify = true, bool isInterrupt = false}) async {
-    await _videoPlayerController?.pause();
+    // Mirror first: on the native path there is no mpv controller, and awaiting
+    // a null one before this ran meant the command could be skipped entirely.
+    debugPrint(
+      'PAUSE_MIRROR native=${nativeControl != null} '
+      'mpv=${_videoPlayerController != null}',
+    );
     nativeControl?.call('pause');
+    await _videoPlayerController?.pause();
     playerStatus = .paused;
 
     // 主动暂停时让出音频焦点
