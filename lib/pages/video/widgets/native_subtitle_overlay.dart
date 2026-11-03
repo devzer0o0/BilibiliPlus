@@ -36,14 +36,7 @@ class _NativeSubtitleOverlayState extends State<NativeSubtitleOverlay> {
   }
 
   void _update(int ms) {
-    final t = ms / 1000;
-    String found = '';
-    for (final c in widget.cues) {
-      if (t >= c.from && t <= c.to) {
-        found = c.text;
-        break;
-      }
-    }
+    final found = subtitleTextAt(widget.cues, ms / 1000);
     if (found != _text && mounted) {
       setState(() => _text = found);
     }
@@ -73,6 +66,20 @@ class _NativeSubtitleOverlayState extends State<NativeSubtitleOverlay> {
       ),
     );
   }
+}
+
+/// The cue covering [seconds], or empty when none does.
+///
+/// Extracted so the visibility rule can be asserted without building a player:
+/// the widget only repaints what this decides.
+String subtitleTextAt(
+  List<({double from, double to, String text})> cues,
+  double seconds,
+) {
+  for (final c in cues) {
+    if (seconds >= c.from && seconds <= c.to) return c.text;
+  }
+  return '';
 }
 
 /// Parses the `{"from", "to", "content"}` list bilibili returns for a subtitle.
