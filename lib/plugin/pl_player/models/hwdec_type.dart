@@ -54,10 +54,23 @@ enum HwDecType {
   /// past DirectX, VAAPI, VDPAU, CUDA, QSV and Rockchip entries to reach
   /// `videotoolbox`. Keep the generic entries plus the backends that exist on
   /// this OS.
-  static List<HwDecType> get valuesForPlatform {
+  static List<HwDecType> get valuesForPlatform =>
+      valuesFor(Platform.operatingSystem);
+
+  /// The same filter, for a named platform. Exists so the rules can be tested
+  /// for iOS from a machine that is not an iPhone.
+  static List<HwDecType> valuesFor(String operatingSystem) {
     const generic = <HwDecType>{no, auto, autoSafe, autoCopy};
-    final platformSpecific = switch (Platform.operatingSystem) {
-      'ios' || 'macos' => <HwDecType>{videotoolbox, videotoolboxCopy},
+    final platformSpecific = switch (operatingSystem) {
+      // iPhone Air never takes the copy-back path: VideoToolbox hands mpv
+      // CVPixelBuffers directly, so every device log shows hwdec=videotoolbox
+      // and never videotoolbox-copy. Offering it only invites a slower mode with
+      // no benefit. macOS keeps it - it is a different machine.
+      //
+      // The animated-screenshot transcoder appends its own ",auto-copy"
+      // (see mpv_convert_webp.dart), so it does not depend on this entry.
+      'ios' => <HwDecType>{videotoolbox},
+      'macos' => <HwDecType>{videotoolbox, videotoolboxCopy},
       'android' => <HwDecType>{mediacodec, mediacodecCopy},
       'windows' => <HwDecType>{
         d3d12va,
