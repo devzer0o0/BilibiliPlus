@@ -1,7 +1,8 @@
 import 'dart:async';
 
 import 'package:PiliPlus/plugin/pl_player/backend/playback_route.dart';
-import 'package:flutter/foundation.dart' show ValueNotifier, ValueListenable, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, ValueNotifier, immutable, visibleForTesting;
 import 'package:flutter/services.dart';
 
 /// Picture-in-Picture for the native AVPlayerLayer path.
