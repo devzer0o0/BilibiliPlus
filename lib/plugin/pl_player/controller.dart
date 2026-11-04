@@ -36,6 +36,8 @@ import 'package:PiliPlus/plugin/pl_player/models/play_repeat.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/plugin/pl_player/models/video_fit_type.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/danmaku_options.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/decoder_probe.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/diagnostics.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/accounts.dart';
@@ -134,6 +136,18 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   /// Events from a superseded source are dropped here, not in each listener.
   int get generation => _generations.current;
+
+  /// Decoder counters from the running mpv, for measurement builds only.
+  ///
+  /// Returns an empty observation in a shipping build, where the probe is not
+  /// compiled in. Callers must treat missing fields as unavailable, never 0.
+  DecoderObservation sampleDecoder() {
+    final player = _videoPlayerController;
+    if (player == null || !Diagnostics.enabled) {
+      return const DecoderObservation();
+    }
+    return DecoderProbe(player, enabled: true).sample();
+  }
 
   /// Where playback currently is, including the states between backends.
   ///
