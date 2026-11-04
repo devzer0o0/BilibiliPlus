@@ -68,6 +68,7 @@ import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/hdr_support.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/hdr_video_surface.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/play_error_panel.dart';
 import 'package:PiliPlus/utils/storage.dart';
@@ -369,9 +370,8 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
         PlPlayerController.updatePlayCount();
       }
     }
-    // The surface is gone, so nothing may keep calling into it. Leaving the
-    // closure set means a late pause/seek reaches a released platform view.
-    plPlayerController?.nativeControl = null;
+    // The session is owned by the controller, not by this widget; the widget
+    // only stops holding the subtitle future it created.
     _nativeCues = null;
 
     removeObserverMobile(this);
@@ -1234,101 +1234,40 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     );
   }
 
-  /// HDR playback goes through AVPlayerLayer because a Flutter texture on iOS
-  /// is 8-bit and cannot carry extended range.
-  Widget _hdrSurface(String url, double width, double height) {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: HdrVideoSurface(
-            url: url,
-            audioUrl: videoDetailController.nativeHdrAudioUrl.value,
-            autoPlay: videoDetailController.autoPlay,
-            onReady: (info) {
-              // These are Rx writes, and this callback runs inside the Obx that
-              // builds the surface. Writing here disposes and recreates the
-              // platform view mid-assembly, which is why the loader stopped
-              // after one poll. Post-frame defers the rebuild off the build.
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                videoDetailController.hdrPlaybackInfo.value = info;
-                final p = videoDetailController.plPlayerController;
-                p.position.value = (info.seconds * 1000).round();
-                if (info.duration > 0) {
-                  p.duration.value = (info.duration * 1000).round();
-                }
-                // The danmaku layer advances on playerStatus.isPlaying, and on
-                // this path play() is never called - the native player starts
-                // itself. Without this the position moves but nothing scrolls.
-                p.playerStatus = info.rate > 0
-                    ? PlayerStatus.playing
-                    : PlayerStatus.paused;
-              });
-            },
-            onCreated: (id) {
-              // A plain field assignment, not setState: rebuilding here would
-              // recreate the platform view and restart the stream.
-              _hdrPlayerId = id;
-              videoDetailController.plPlayerController.nativeControl =
-                  (method, [args]) => hdrVideoCommand(id, method, args);
-            },
-            key: const ValueKey('hdr-surface-probe'),
-          ),
-        ),
-        // Danmaku is drawn by Flutter, not by mpv, so it keeps working on this
-        // path - but only if it is mounted here. It used to live inside
-        // PLVideoPlayer, which this branch replaces.
-        Positioned.fill(
-          child: IgnorePointer(
-            child: Obx(
-              () => PlDanmaku(
-                key: ValueKey(videoDetailController.cid.value),
-                isPipMode: false,
-                cid: videoDetailController.cid.value,
-                playerController: plPlayerController!,
-                isFullScreen: plPlayerController!.isFullScreen.value,
-                isFileSource: videoDetailController.isFileSource,
-                size: Size(width, height),
-              ),
-            ),
-          ),
-        ),
-        // Subtitles are drawn by mpv on the normal path, and mpv is not
-        // playing here - so the cue is looked up and drawn in Flutter instead.
-        Positioned.fill(
-          child: IgnorePointer(
-            child: Obx(() {
-              final index = videoDetailController.vttSubtitlesIndex.value;
-              if (index <= 0) return const SizedBox.shrink();
-              _nativeCues ??= videoDetailController.nativeSubtitleCues();
-              return FutureBuilder(
-                future: _nativeCues,
-                builder: (context, snap) {
-                  final cues = snap.data;
-                  if (cues == null || cues.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
-                  return NativeSubtitleOverlay(
-                    controller: plPlayerController!,
-                    cues: cues,
-                  );
-                },
-              );
-            }),
-          ),
-        ),
-        // The controls stay in Flutter; only what they drive changes. mpv is
-        // not the player here, so play/pause/seek are mirrored onto the native
-        // surface through the controller.
-        Positioned.fill(
-          child: HeaderControl(
-            key: videoDetailController.headerCtrKey,
-            isPortrait: true,
-            controller: plPlayerController!,
-            videoDetailCtr: videoDetailController,
-            heroTag: heroTag,
-          ),
-        ),
-      ],
+  /// The AVPlayerLayer surface, given to the shared player so the controls,
+  /// gestures, danmaku and progress bar around it are the same widgets as SDR.
+  Widget _nativeSurface(String url) {
+    return HdrVideoSurface(
+      sessionId: videoDetailController.nativeSourceKey,
+      url: url,
+      audioUrl: videoDetailController.nativeHdrAudioUrl.value,
+      autoPlay: videoDetailController.autoPlay,
+      // Describe() is now a diagnostic read, not the state channel: state
+      // arrives over EventChannel from the session itself.
+      onReady: (info) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          videoDetailController.hdrPlaybackInfo.value = info;
+        });
+      },
+      // Keyed by rendition only: a rotation or a control-bar toggle rebuilds
+      // this widget, and a non-media change must not recreate the session.
+      key: ValueKey(videoDetailController.nativeSourceKey),
+    );
+  }
+
+  /// Subtitle cues for the native path, where mpv does not decode them.
+  Widget? _nativeSubtitleOverlay() {
+    final index = videoDetailController.vttSubtitlesIndex.value;
+    if (index <= 0) return null;
+    _nativeCues ??= videoDetailController.nativeSubtitleCues();
+    return FutureBuilder(
+      future: _nativeCues,
+      builder: (context, snap) {
+        final cues = snap.data;
+        if (cues == null || cues.isEmpty) return const SizedBox.shrink();
+        return NativeSubtitleOverlay(controller: plPlayerController!, cues: cues);
+      },
     );
   }
 
@@ -1347,46 +1286,49 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     child: Obx(
       () {
         final hdrUrl = videoDetailController.nativeHdrUrl.value;
-        // HDR is drawn by AVPlayerLayer, which does not need mpv's texture
-        // controller - so that requirement only applies to the mpv branch.
-        if (hdrUrl != null &&
+        final nativeHdr = hdrUrl != null &&
+            HdrSupport.nativeHdrPath &&
             videoDetailController.videoState.value &&
-            videoDetailController.autoPlay) {
-          return _hdrSurface(hdrUrl, width, height);
-        }
-        return !videoDetailController.videoState.value ||
-                !videoDetailController.autoPlay ||
-                plPlayerController?.videoController == null
-            ? _playErrorPanel(width, height)
-          : PLVideoPlayer(
-              maxWidth: width,
-              maxHeight: height,
-              plPlayerController: plPlayerController!,
-              videoDetailController: videoDetailController,
-              introController: introController,
-              headerControl: HeaderControl(
-                key: videoDetailController.headerCtrKey,
-                isPortrait: isPortrait,
-                controller: videoDetailController.plPlayerController,
-                videoDetailCtr: videoDetailController,
-                heroTag: heroTag,
-              ),
-              danmuWidget: isPipMode && pipNoDanmaku
-                  ? null
-                  : Obx(
-                      () => PlDanmaku(
-                        key: ValueKey(videoDetailController.cid.value),
-                        isPipMode: isPipMode,
-                        cid: videoDetailController.cid.value,
-                        playerController: plPlayerController!,
-                        isFullScreen: plPlayerController!.isFullScreen.value,
-                        isFileSource: videoDetailController.isFileSource,
-                        size: Size(width, height),
-                      ),
-                    ),
-              showEpisodes: showEpisodes,
-              showViewPoints: showViewPoints,
-            );
+            videoDetailController.autoPlay;
+        // On the native path there is no mpv controller by design; requiring
+        // one here is what turned every HDR load into a blank error panel.
+        final ready = videoDetailController.videoState.value &&
+            videoDetailController.autoPlay &&
+            (nativeHdr || plPlayerController?.videoController != null);
+        if (!ready) return _playErrorPanel(width, height);
+        return PLVideoPlayer(
+          maxWidth: width,
+          maxHeight: height,
+          plPlayerController: plPlayerController!,
+          videoDetailController: videoDetailController,
+          introController: introController,
+          headerControl: HeaderControl(
+            key: videoDetailController.headerCtrKey,
+            isPortrait: isPortrait,
+            controller: videoDetailController.plPlayerController,
+            videoDetailCtr: videoDetailController,
+            heroTag: heroTag,
+          ),
+          nativeSurface: nativeHdr ? _nativeSurface(hdrUrl) : null,
+          subtitleOverlay: nativeHdr
+              ? Obx(() => _nativeSubtitleOverlay() ?? const SizedBox.shrink())
+              : null,
+          danmuWidget: isPipMode && pipNoDanmaku
+              ? null
+              : Obx(
+                  () => PlDanmaku(
+                    key: ValueKey(videoDetailController.cid.value),
+                    isPipMode: isPipMode,
+                    cid: videoDetailController.cid.value,
+                    playerController: plPlayerController!,
+                    isFullScreen: plPlayerController!.isFullScreen.value,
+                    isFileSource: videoDetailController.isFileSource,
+                    size: Size(width, height),
+                  ),
+                ),
+          showEpisodes: showEpisodes,
+          showViewPoints: showViewPoints,
+        );
       },
     ),
   );
@@ -1398,9 +1340,6 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   late double maxHeight;
   bool isWindowMode = false;
   late EdgeInsets padding;
-
-  /// The platform view id while a native HDR surface is on screen.
-  int? _hdrPlayerId;
 
   /// Loaded once per HDR session; the cue list does not change while playing.
   Future<List<({double from, double to, String text})>>? _nativeCues;

@@ -17,8 +17,10 @@
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		A6C2F8E92FCB1A0000C0D3E1 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C2F8E82FCB1A0000C0D3E1 /* SceneDelegate.swift */; };
 		B7D3A9F12FCB1A0000C0D3E1 /* PipPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D3A9F02FCB1A0000C0D3E1 /* PipPlugin.swift */; };
-		B7D3A9F72FCB1A0000C0D3E1 /* DashAssembler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D3A9F82FCB1A0000C0D3E1 /* DashAssembler.swift */; };
 		B7D3A9F52FCB1A0000C0D3E1 /* HdrVideoPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D3A9F62FCB1A0000C0D3E1 /* HdrVideoPlugin.swift */; };
+		B7D3AA012FCB1A0000C0D3E1 /* HlsBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D3AA022FCB1A0000C0D3E1 /* HlsBridge.swift */; };
+		B7D3A9F92FCB1A0000C0D3E1 /* DashIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D3A9FA2FCB1A0000C0D3E1 /* DashIndex.swift */; };
+		B7D3A9FB2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D3A9FC2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -55,8 +57,10 @@
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A6C2F8E82FCB1A0000C0D3E1 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		B7D3A9F02FCB1A0000C0D3E1 /* PipPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PipPlugin.swift; sourceTree = "<group>"; };
-		B7D3A9F82FCB1A0000C0D3E1 /* DashAssembler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashAssembler.swift; sourceTree = "<group>"; };
 		B7D3A9F62FCB1A0000C0D3E1 /* HdrVideoPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HdrVideoPlugin.swift; sourceTree = "<group>"; };
+		B7D3AA022FCB1A0000C0D3E1 /* HlsBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HlsBridge.swift; sourceTree = "<group>"; };
+		B7D3A9FA2FCB1A0000C0D3E1 /* DashIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashIndex.swift; sourceTree = "<group>"; };
+		B7D3A9FC2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mp4BoxPatcher.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -123,8 +127,10 @@
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				A6C2F8E82FCB1A0000C0D3E1 /* SceneDelegate.swift */,
 				B7D3A9F02FCB1A0000C0D3E1 /* PipPlugin.swift */,
-				B7D3A9F82FCB1A0000C0D3E1 /* DashAssembler.swift */,
 				B7D3A9F62FCB1A0000C0D3E1 /* HdrVideoPlugin.swift */,
+				B7D3AA022FCB1A0000C0D3E1 /* HlsBridge.swift */,
+				B7D3A9FA2FCB1A0000C0D3E1 /* DashIndex.swift */,
+				B7D3A9FC2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -299,8 +305,10 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				A6C2F8E92FCB1A0000C0D3E1 /* SceneDelegate.swift in Sources */,
 				B7D3A9F12FCB1A0000C0D3E1 /* PipPlugin.swift in Sources */,
-				B7D3A9F72FCB1A0000C0D3E1 /* DashAssembler.swift in Sources */,
 				B7D3A9F52FCB1A0000C0D3E1 /* HdrVideoPlugin.swift in Sources */,
+				B7D3AA012FCB1A0000C0D3E1 /* HlsBridge.swift in Sources */,
+				B7D3A9F92FCB1A0000C0D3E1 /* DashIndex.swift in Sources */,
+				B7D3A9FB2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

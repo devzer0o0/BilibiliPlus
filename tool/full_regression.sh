@@ -18,6 +18,15 @@ else
   fail "verification script self-checks"
 fi
 
+echo "== 0b. native parser tests =="
+# The DASH index, the playlist and the box patcher are pure Swift; they are
+# exercised through SwiftPM so they gate a release without a device.
+if [ -f "$ROOT/tool/swift_parser_tests.sh" ] && bash "$ROOT/tool/swift_parser_tests.sh" >/dev/null 2>&1; then
+  pass "swift parser/index/playlist tests"
+else
+  fail "swift parser tests"
+fi
+
 echo "== 1. unit suite =="
 if ( cd "$ROOT" && flutter test --reporter compact 2>&1 | tail -1 | grep -q 'All tests passed' ); then
   pass "flutter test"

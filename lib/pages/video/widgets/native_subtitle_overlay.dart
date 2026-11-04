@@ -1,15 +1,17 @@
-import 'dart:convert';
-
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
+import 'package:PiliPlus/plugin/pl_player/models/subtitle_cue.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+
+export 'package:PiliPlus/plugin/pl_player/models/subtitle_cue.dart'
+    show SubtitleCue, parseSubtitleCues, subtitleTextAt;
 
 /// Draws a subtitle cue in Flutter.
 ///
 /// The normal path hands the track to mpv and lets `SubtitleView` render what
 /// mpv decoded. That cannot work on the native HDR path, where mpv is not the
-/// player, so the cue is looked up here instead - the account already ships the
-/// subtitle as JSON, so nothing has to be fetched twice.
+/// player, so the cue is looked up here instead - from the same [SubtitleCue]
+/// list mpv's VTT is generated from.
 class NativeSubtitleOverlay extends StatefulWidget {
   const NativeSubtitleOverlay({
     super.key,
@@ -20,7 +22,7 @@ class NativeSubtitleOverlay extends StatefulWidget {
   final PlPlayerController controller;
 
   /// Cues in seconds, sorted by start.
-  final List<({double from, double to, String text})> cues;
+  final List<SubtitleCue> cues;
 
   @override
   State<NativeSubtitleOverlay> createState() => _NativeSubtitleOverlayState();
@@ -38,6 +40,18 @@ class _NativeSubtitleOverlayState extends State<NativeSubtitleOverlay> {
   void initState() {
     super.initState();
     _worker = ever(widget.controller.position, _update);
+    _update(widget.controller.position.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant NativeSubtitleOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A new track or a new video must be re-evaluated immediately instead of
+    // waiting for the next position tick.
+    if (!identical(oldWidget.cues, widget.cues) ||
+        !identical(oldWidget.controller, widget.controller)) {
+      _update(widget.controller.position.value);
+    }
   }
 
   @override
@@ -46,8 +60,13 @@ class _NativeSubtitleOverlayState extends State<NativeSubtitleOverlay> {
     super.dispose();
   }
 
-  void _update(int ms) {
-    final found = subtitleTextAt(widget.cues, ms / 1000);
+  /// [PlPlayerController.position] counts whole seconds, so the cue lookup
+  /// takes it as-is.
+  ///
+  /// Dividing it by 1000 again made every cue unreachable after the first
+  /// second: the overlay asked for 0.002s when playback was at 2s.
+  void _update(int seconds) {
+    final found = subtitleTextAt(widget.cues, seconds.toDouble());
     if (found != _text && mounted) {
       setState(() => _text = found);
     }
@@ -79,35 +98,6 @@ class _NativeSubtitleOverlayState extends State<NativeSubtitleOverlay> {
   }
 }
 
-/// The cue covering [seconds], or empty when none does.
-///
-/// Extracted so the visibility rule can be asserted without building a player:
-/// the widget only repaints what this decides.
-String subtitleTextAt(
-  List<({double from, double to, String text})> cues,
-  double seconds,
-) {
-  for (final c in cues) {
-    if (seconds >= c.from && seconds <= c.to) return c.text;
-  }
-  return '';
-}
-
-/// Parses the `{"from", "to", "content"}` list bilibili returns for a subtitle.
-List<({double from, double to, String text})> parseNativeSubtitle(
-  String jsonBody,
-) {
-  final list = jsonDecode(jsonBody);
-  if (list is! List) return const [];
-  final out = <({double from, double to, String text})>[];
-  for (final e in list) {
-    if (e is! Map) continue;
-    final from = (e['from'] as num?)?.toDouble();
-    final to = (e['to'] as num?)?.toDouble();
-    final text = e['content'] as String?;
-    if (from == null || to == null || text == null || text.isEmpty) continue;
-    out.add((from: from, to: to, text: text));
-  }
-  out.sort((a, b) => a.from.compareTo(b.from));
-  return out;
-}
+/// Kept as the name the page and its tests already use.
+List<SubtitleCue> parseNativeSubtitle(String jsonBody) =>
+    parseSubtitleCues(jsonBody);

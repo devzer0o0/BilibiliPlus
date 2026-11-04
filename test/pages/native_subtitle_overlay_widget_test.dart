@@ -36,4 +36,18 @@ void main() {
   test('an empty list never shows anything', () {
     expect(subtitleTextAt(const [], 5.0), '');
   });
+
+  test('a position in the player unit maps to the cue unit', () {
+    // PlPlayerController.position is whole seconds. The cue list is in
+    // seconds too, so the same number has to be used on both sides - the old
+    // code divided by 1000 here and no cue past the first second matched.
+    for (final seconds in [0, 1, 2, 3, 11]) {
+      final expected = cues
+          .where((c) => seconds >= c.from && seconds <= c.to)
+          .map((c) => c.text)
+          .firstOrNull;
+      expect(subtitleTextAt(cues, seconds.toDouble()), expected ?? '');
+    }
+    expect(subtitleTextAt(cues, 11), '第十秒');
+  });
 }

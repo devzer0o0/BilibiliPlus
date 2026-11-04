@@ -45,7 +45,10 @@ discarding the HDR.
 
 ## What real HDR would require
 
-An `AVPlayerLayer`, which is the only public iOS surface that composites
+An `AVPlayerLayer`, which is the platform surface this project uses for HDR.
+(It is not the only conceivable HDR rendering path on iOS - a custom Metal/EDR
+pipeline is possible - but it is the one that keeps the system decoder and the
+system playback clock.)
 extended-range video:
 
 ```swift

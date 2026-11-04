@@ -65,6 +65,23 @@ if [ -f "$DART" ]; then
     n=$(strings -a "$DART" 2>/dev/null | grep -c "$kw")
     [ "$n" = "0" ] && note "'$kw' absent" || bad "'$kw' appears $n time(s)"
   done
+  # The native side is compiled into Runner, not App.framework, so it needs its
+  # own scan: a diagnostic that writes files or traces is just as unacceptable
+  # there as in Dart.
+  RUNNER="$APP/Runner"
+  if [ -f "$RUNNER" ]; then
+    for kw in hdr_state.log TEMP_FORCE_HDR VPARAM; do
+      n=$(strings -a "$RUNNER" 2>/dev/null | grep -c "$kw")
+      [ "$n" = "0" ] && note "native '$kw' absent" || bad "native '$kw' appears $n time(s)"
+    done
+    # The trace hook itself may exist, but only behind an environment variable:
+    # it must not print unconditionally.
+    n=$(strings -a "$RUNNER" 2>/dev/null | grep -c 'PILIPLUS_HLS_TRACE')
+    [ "$n" -le 1 ] && note "native trace hook is env-gated" \
+      || bad "trace hook duplicated $n times"
+  else
+    bad "no Runner binary - cannot scan native diagnostics"
+  fi
 else
   # A debug bundle keeps Dart code in kernel_blob.bin, so this check cannot run.
   # Reporting "satisfied" without having looked would be worse than failing.

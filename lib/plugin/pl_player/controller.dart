@@ -18,6 +18,10 @@ import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/models_new/video/video_shot/data.dart';
 import 'package:PiliPlus/pages/danmaku/danmaku_model.dart';
 import 'package:PiliPlus/pages/sponsor_block/block_mixin.dart';
+import 'package:PiliPlus/plugin/pl_player/backend/native_backend.dart';
+import 'package:PiliPlus/plugin/pl_player/capability.dart';
+import 'package:PiliPlus/plugin/pl_player/backend/playback_backend.dart';
+import 'package:PiliPlus/plugin/pl_player/backend/playback_session.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/hdr_support.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_status.dart';
@@ -93,18 +97,66 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   int get progress =>
       isSeeking.value && hoverDx == null ? seekPosition.value : position.value;
 
-  int get positionInMilliseconds =>
-      videoPlayerController?.state.position.inMilliseconds ?? 0;
+  int get positionInMilliseconds => _snapshot.positionInMilliseconds;
 
   final RxInt buffered = RxInt(0);
 
   final RxInt duration = RxInt(0);
 
-  int durationInMilliseconds = 0;
+  int get durationInMilliseconds => _snapshot.durationInMilliseconds;
 
   void updateDuration(Duration value) {
+    _snapshot = _snapshot.copyWith(duration: value);
     duration.value = value.inSeconds;
-    durationInMilliseconds = value.inMilliseconds;
+  }
+
+  /// The single source of playback state for the UI.
+  ///
+  /// Both the mpv listener and the native event stream reduce into this, so
+  /// `position`/`duration` (seconds) and `positionInMilliseconds`/
+  /// `durationInMilliseconds` can never disagree - they are the same
+  /// [PlaybackSnapshot].
+  PlaybackSnapshot _snapshot = const PlaybackSnapshot();
+  PlaybackSnapshot get snapshot => _snapshot;
+
+  /// Which backend is publishing state right now.
+  PlaybackBackendKind get activeBackend => _snapshot.backend;
+
+  /// Events from a superseded source are dropped here, not in each listener.
+  int _generation = 0;
+  int get generation => _generation;
+
+  /// Applies one snapshot and fans it out to the UI and the business hooks.
+  void applySnapshot(
+    PlaybackSnapshot next, {
+    String? debugLabel,
+    bool notifyStatus = true,
+  }) {
+    if (next.generation != 0 && next.generation != _generation) return;
+    final previous = _snapshot;
+    _snapshot = next;
+    if (next.position.inSeconds != previous.position.inSeconds) {
+      position.value = next.position.inSeconds;
+    }
+    if (next.duration.inSeconds != previous.duration.inSeconds) {
+      duration.value = next.duration.inSeconds;
+    }
+    if (next.buffered.inSeconds != previous.buffered.inSeconds) {
+      buffered.value = next.buffered.inSeconds;
+    }
+    if (next.buffering != previous.buffering) {
+      isBuffering.value = next.buffering;
+    }
+    if ((next.playing || next.completed) != (previous.playing || previous.completed) &&
+        notifyStatus) {
+      playerStatus = next.completed
+          ? .completed
+          : (next.playing ? .playing : .paused);
+      for (final listener in _statusListeners) {
+        listener(playerStatus);
+      }
+    }
+    _updatePlaybackState(debugLabel: debugLabel);
   }
 
   int _playerCount = 0;
@@ -158,6 +210,117 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   Timer? _timer;
   StreamSubscription? _subForSeek;
+
+  /// Legacy hook kept for callers that mirrored commands to the surface.
+  ///
+  /// The controller now owns the native session, so commands dispatch to it
+  /// directly; the setter only records whether a surface is attached.
+  void Function(String method, [Map? args])? get nativeControl => null;
+
+  set nativeControl(void Function(String method, [Map? args])? value) {
+    _nativeSurfaceAttached = value != null;
+  }
+
+  bool _nativeSurfaceAttached = false;
+
+  /// True once the native platform view has been created and can render.
+  bool get nativeSurfaceAttached => _nativeSurfaceAttached;
+
+  /// The native HDR session, when AVPlayerLayer is the active backend.
+  ///
+  /// Ownership lives here rather than in the surface widget: a rebuild, a
+  /// rotation or a full-screen toggle must not decide whether a business
+  /// session exists.
+  PlaybackSession? _nativeSession;
+  StreamSubscription<PlaybackSnapshot>? _nativeEvents;
+
+  bool get _isNativeActive =>
+      _snapshot.backend == PlaybackBackendKind.native && _nativeSession != null;
+
+  bool get isNativeHdrActive => _isNativeActive;
+
+  /// What the active backend can actually do.
+  ///
+  /// Callers use these instead of force-unwrapping `videoPlayerController`:
+  /// an mpv-only feature on the native path is unavailable, and saying so is
+  /// better than quietly doing nothing or crashing.
+  PlaybackCapabilities get capabilities =>
+      PlaybackCapabilities(isMpv: supportsMpvCommands);
+
+  bool get supportsMpvCommands => _videoPlayerController != null;
+  bool get supportsShader => capabilities.shader;
+  bool get supportsTextureScreenshot => capabilities.textureScreenshot;
+  bool get supportsMpvVolume => capabilities.mixerVolume;
+  bool get supportsMpvAudioTrackSwitch => capabilities.audioTrackSwitch;
+
+  /// Opens the native session for [videoUrl].
+  ///
+  /// This does not wait for mpv: the native path used to require a completed
+  /// mpv open before the surface was allowed to exist, which dead-locked the
+  /// moment mpv was no longer created for HDR.
+  Future<void> openNativeHdr({
+    required String videoUrl,
+    String? audioUrl,
+    SegmentBaseRange? videoRange,
+    SegmentBaseRange? audioRange,
+    String? videoCodecs,
+    String? audioCodecs,
+    int? width,
+    int? height,
+    String? frameRate,
+    Duration? startAt,
+    required String sourceKey,
+    bool autoplay = true,
+    double speed = 1.0,
+  }) async {
+    final session = _nativeSession ??= PlaybackSession();
+    _generation += 1;
+    final generation = _generation;
+    _nativeEvents?.cancel();
+    _nativeEvents = session.events.listen((snapshot) {
+      if (snapshot.generation != _generation) return;
+      applySnapshot(
+        snapshot.copyWith(generation: _generation),
+        notifyStatus: true,
+      );
+      _snapshot = _snapshot.copyWith(
+        generation: _generation,
+        backend: PlaybackBackendKind.native,
+      );
+      if (snapshot.position case final at when at > Duration.zero) {
+        for (final listener in _positionListeners) {
+          listener(at);
+        }
+      }
+    });
+    playerStatus = autoplay ? PlayerStatus.playing : PlayerStatus.paused;
+    await session.open(
+      NativePlaybackBackend(sessionId: sourceKey, generation: generation),
+      PlaybackRequest(
+        sourceKey: sourceKey,
+        videoUrl: videoUrl,
+        audioUrl: audioUrl,
+        videoSegmentBase: videoRange,
+        audioSegmentBase: audioRange,
+        videoCodecs: videoCodecs,
+        audioCodecs: audioCodecs,
+        width: width,
+        height: height,
+        frameRate: frameRate,
+        startPosition: startAt,
+        autoPlay: autoplay,
+        rate: speed,
+      ),
+    );
+  }
+
+  /// Stops the native session and returns ownership to mpv.
+  Future<void> closeNativeHdr() async {
+    await _nativeEvents?.cancel();
+    _nativeEvents = null;
+    await _nativeSession?.dispose();
+    _nativeSession = null;
+  }
 
   Box setting = GStorage.setting;
 
@@ -303,9 +466,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     const minShortSide = 160.0;
     final nativeapi.Size size;
     final nativeapi.Size minimumSize;
-    final state = videoPlayerController!.state;
-    int width = state.width;
-    int height = state.height;
+    final state = videoPlayerController?.state;
+    int width = state?.width ?? 0;
+    int height = state?.height ?? 0;
     if (width == 0) width = this.width ?? 16;
     if (height == 0) height = this.height ?? 9;
     final aspectRatio = width / height;
@@ -365,7 +528,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
             width: state.width == 0 ? width : state.width,
             height: state.height == 0 ? height : state.height,
             autoEnter: autoEnter,
-            state: _iosPipState(state),
+            state: _iosPipState(),
           );
         }
         return;
@@ -390,22 +553,25 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
   }
 
-  Map<String, Object> _iosPipState(PlayerState state, [Duration? position]) {
+  Map<String, Object> _iosPipState() {
     return {
       'isPlaying': playerStatus.isPlaying,
       'isBuffering': isBuffering.value,
       'isLive': isLive,
-      'position': (position ?? state.position).inMilliseconds,
-      'duration': durationInMilliseconds,
-      'speed': state.rate,
+      'position': _snapshot.positionInMilliseconds,
+      'duration': _snapshot.durationInMilliseconds,
+      'speed': _snapshot.rate,
     };
   }
 
+  /// iOS PiP still mirrors the mpv texture, so it is only offered when mpv is
+  /// the active backend; the native HDR surface has no texture id to hand over.
   void _updateIOSPip([Duration? position]) {
-    if (Platform.isIOS && IOSPipHelper.needsUpdate) {
-      if (_videoPlayerController case final player?) {
-        IOSPipHelper.update(_iosPipState(player.state, position));
-      }
+    if (Platform.isIOS &&
+        IOSPipHelper.needsUpdate &&
+        _snapshot.backend == PlaybackBackendKind.mpv &&
+        _videoPlayerController != null) {
+      IOSPipHelper.update(_iosPipState());
     }
   }
 
@@ -728,6 +894,19 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     Volume? volume,
     bool autoFullScreenFlag = false,
     int? rotate,
+    // Native HDR routing: when set, AVPlayerLayer is the only backend and mpv
+    // is never opened. The decision is made by the caller because only it
+    // knows the rendition, the codec and the platform capability.
+    String? nativeHdrUrl,
+    String? nativeHdrAudioUrl,
+    SegmentBaseRange? nativeVideoRange,
+    SegmentBaseRange? nativeAudioRange,
+    String? nativeVideoCodecs,
+    String? nativeAudioCodecs,
+    int? nativeWidth,
+    int? nativeHeight,
+    String? nativeFrameRate,
+    String? sourceKey,
   }) async {
     try {
       _processing = true;
@@ -760,27 +939,72 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       if (_playerCount == 0) {
         return;
       }
-      // 配置Player 音轨、字幕等等
-      await _createVideoController(dataSource, seekTo, volume, rotate);
 
-      if (_playerCount == 0) {
-        _removeListeners();
-        _videoPlayerController?.dispose();
-        _videoPlayerController = null;
-        _videoController = null;
-        return;
+      final useNative = nativeHdrUrl != null && nativeHdrUrl.isNotEmpty;
+      if (!useNative) {
+        // Leaving the native path has to tear it down before mpv opens, or the
+        // old AVPlayer keeps decoding underneath the new picture.
+        if (_nativeSession != null || _snapshot.backend == PlaybackBackendKind.native) {
+          await closeNativeHdr();
+          _snapshot = const PlaybackSnapshot();
+        }
+        // 配置Player 音轨、字幕等等
+        await _createVideoController(dataSource, seekTo, volume, rotate);
+
+        if (_playerCount == 0) {
+          _removeListeners();
+          _videoPlayerController?.dispose();
+          _videoPlayerController = null;
+          _videoController = null;
+          return;
+        }
+
+        updateDuration(duration ?? _videoPlayerController!.state.duration);
+        position.value = buffered.value = seekTo?.inSeconds ?? 0;
+
+        dataStatus.value = .loaded;
+
+        if (autoFullScreenFlag && autoEnterFullScreen) {
+          triggerFullScreen(status: true);
+        }
+
+        await _initializePlayer();
+      } else {
+        // Native path: no mpv is created, so nothing has to be waited for and
+        // nothing can play underneath. Duration comes from the session.
+        _generation += 1;
+        _snapshot = PlaybackSnapshot(
+          generation: _generation,
+          backend: PlaybackBackendKind.native,
+          position: seekTo ?? Duration.zero,
+          duration: duration ?? Duration.zero,
+        );
+        position.value = seekTo?.inSeconds ?? 0;
+        buffered.value = 0;
+        isBuffering.value = true;
+        dataStatus.value = DataStatus.loaded;
+        if (autoFullScreenFlag && autoEnterFullScreen) {
+          triggerFullScreen(status: true);
+        }
+        await openNativeHdr(
+          videoUrl: nativeHdrUrl,
+          audioUrl: nativeHdrAudioUrl,
+          videoRange: nativeVideoRange,
+          audioRange: nativeAudioRange,
+          videoCodecs: nativeVideoCodecs,
+          audioCodecs: nativeAudioCodecs,
+          width: nativeWidth,
+          height: nativeHeight,
+          frameRate: nativeFrameRate,
+          startAt: seekTo,
+          sourceKey:
+              sourceKey ??
+              'native:${_bvid ?? ''}:${this.cid ?? 0}:${_generation}',
+          autoplay: _autoPlay,
+          speed: isLive ? 1.0 : playbackSpeed,
+        );
+        _initVideoFit();
       }
-
-      updateDuration(duration ?? _videoPlayerController!.state.duration);
-      position.value = buffered.value = seekTo?.inSeconds ?? 0;
-
-      dataStatus.value = .loaded;
-
-      if (autoFullScreenFlag && autoEnterFullScreen) {
-        triggerFullScreen(status: true);
-      }
-
-      await _initializePlayer();
       onInit?.call();
     } catch (err, stackTrace) {
       dataStatus.value = DataStatus.error;
@@ -1027,15 +1251,16 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   void _updatePlaybackState({Duration? position, String? debugLabel}) {
+    final at = position ?? _snapshot.position;
     videoPlayerServiceHandler?.onUpdateState(
       playerStatus,
       isBuffering.value,
       isLive,
-      position: position ?? _videoPlayerController!.state.position,
+      position: at,
       speed: playbackSpeed,
       debugLabel: debugLabel,
     );
-    _updateIOSPip(position);
+    _updateIOSPip(at);
   }
 
   /// 播放事件监听
@@ -1046,9 +1271,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       /// playing
       stream.playing.listen((bool playing) {
         if (playing) {
-          playerStatus = .playing;
           _stopWakeLockTimer();
-          _updatePlaybackState();
           WakelockPlus.enable();
 
           if (_isAutoEnterPip) {
@@ -1059,48 +1282,42 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
             }
           }
         } else {
-          playerStatus = .paused;
           _startWakeLockTimer();
           _disableAutoEnterPip();
-          _updateIOSPip();
         }
 
-        for (final element in _statusListeners) {
-          element(playing ? .playing : .paused);
-        }
+        _reduceMpv(playing: playing, completed: false, notifyStatus: true);
 
-        final seconds = videoPlayerController!.state.position.inSeconds;
-        if (seconds != 0) {
-          makeHeartBeat(seconds, type: .status);
+        if (playing) {
+          final seconds = _snapshot.position.inSeconds;
+          if (seconds != 0) {
+            makeHeartBeat(seconds, type: .status);
+          }
         }
       }),
 
       ///completed
       stream.completed.listen((bool completed) {
         if (completed) {
-          playerStatus = .completed;
           _startWakeLockTimer();
-
-          for (final element in _statusListeners) {
-            element(.completed);
-          }
-
+          _reduceMpv(playing: false, completed: true, notifyStatus: true);
           makeHeartBeat(-1, type: .completed);
         }
       }),
 
       /// position
       stream.position.listen((Duration position) {
-        final posInSeconds = position.inSeconds;
+        final moved = position.inSeconds != _snapshot.position.inSeconds;
+        _reduceMpv(
+          position: position,
+          // A position that jumps back to zero while still playing is a reload,
+          // not a pause; the media centre has to be told.
+          notifyStatus: false,
+          debugLabel: moved && position.inSeconds == 0 ? 'positionReset' : null,
+        );
 
-        if (posInSeconds != this.position.value) {
-          if (posInSeconds == 0 && playerStatus.isPlaying) {
-            _updatePlaybackState(position: position);
-          }
-
-          this.position.value = posInSeconds;
-
-          makeHeartBeat(posInSeconds);
+        if (moved) {
+          makeHeartBeat(position.inSeconds);
         }
 
         for (final element in _positionListeners) {
@@ -1108,18 +1325,16 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         }
       }),
       stream.duration.listen((Duration duration) {
-        updateDuration(duration);
-        _updateIOSPip();
+        _reduceMpv(duration: duration);
       }),
       stream.buffer.listen((Duration buffer) {
-        buffered.value = buffer.inSeconds;
+        _reduceMpv(buffered: buffer);
       }),
       stream.buffering.listen((bool buffering) {
-        isBuffering.value = buffering;
         if (!playerStatus.isCompleted) {
           _stopWakeLockTimer();
-          _updatePlaybackState();
         }
+        _reduceMpv(buffering: buffering);
       }),
       if (kDebugMode)
         stream.log.listen(((PlayerLog log) {
@@ -1187,6 +1402,36 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     ];
   }
 
+  /// Reduces one mpv event into the shared snapshot.
+  ///
+  /// This is the only place mpv state is allowed to become controller state;
+  /// the native stream goes through [applySnapshot] the same way.
+  void _reduceMpv({
+    Duration? position,
+    Duration? duration,
+    Duration? buffered,
+    bool? playing,
+    bool? buffering,
+    bool? completed,
+    bool notifyStatus = false,
+    String? debugLabel,
+  }) {
+    applySnapshot(
+      _snapshot.copyWith(
+        generation: _generation,
+        backend: PlaybackBackendKind.mpv,
+        position: position,
+        duration: duration,
+        buffered: buffered,
+        playing: playing,
+        buffering: buffering,
+        completed: completed,
+      ),
+      notifyStatus: notifyStatus,
+      debugLabel: debugLabel,
+    );
+  }
+
   /// 移除事件监听
   void _removeListeners() {
     _subscriptions?.forEach((e) => e.cancel());
@@ -1201,50 +1446,87 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
   }
 
+  /// The only path a seek takes.
+  ///
+  /// It is clamped once, sent to the active backend only, and recorded in the
+  /// snapshot so the progress bar cannot show an older position than the one
+  /// just requested. A burst of drags ends with the last intent because the
+  /// native side is told the newest target and mpv seeks to the same value.
   Future<void> seek(Duration position, {bool isSeek = false}) async {
-    if (isSeek) {
+    if (isSeek && !_isNativeActive) {
       /// 拖动进度条调节时，不等待第一帧，防止抖动
-      await _videoPlayerController?.stream.buffer.first;
+      try {
+        await _videoPlayerController?.stream.buffer.first;
+      } catch (_) {}
     }
     danmakuController?.clear();
+    final clamped = _clampPosition(position);
+    if (_isNativeActive) {
+      try {
+        await _nativeSession?.seek(clamped);
+        applySnapshot(_snapshot.copyWith(position: clamped));
+      } catch (e) {
+        if (kDebugMode) debugPrint('native seek failed: $e');
+      }
+      return;
+    }
     try {
-      await _videoPlayerController?.seek(position);
-      _updateIOSPip(position);
+      await _videoPlayerController?.seek(clamped);
+      applySnapshot(_snapshot.copyWith(position: clamped));
     } catch (e) {
       if (kDebugMode) debugPrint('seek failed: $e');
     }
   }
 
+  Duration _clampPosition(Duration position) {
+    if (position < Duration.zero) return Duration.zero;
+    final total = _snapshot.duration;
+    if (total > Duration.zero && position > total) return total;
+    return position;
+  }
+
   /// 跳转至指定位置
   Future<void> seekTo(Duration position, {bool isSeek = true}) async {
-    nativeControl?.call('seek', {'ms': position.inMilliseconds});
     if (_playerCount == 0) {
       return;
     }
-    if (position < Duration.zero) {
-      position = Duration.zero;
-    }
-    _heartDuration = position.inSeconds;
+    final target = _clampPosition(position);
+    _heartDuration = target.inSeconds;
 
+    if (_isNativeActive) {
+      await seek(target, isSeek: false);
+      return;
+    }
     if (duration.value != 0) {
-      seek(position, isSeek: isSeek);
+      await seek(target, isSeek: isSeek);
     } else {
-      // if (kDebugMode) debugPrint('seek duration else');
+      // The duration is not known yet; remember the target and apply it once
+      // the duration arrives, instead of leaking a subscription per seek.
+      _pendingSeekUntilDuration = target;
       _subForSeek?.cancel();
       _subForSeek = duration.listen((_) {
-        seek(position, isSeek: isSeek);
+        final pending = _pendingSeekUntilDuration;
+        _pendingSeekUntilDuration = null;
         _cancelSubForSeek();
+        if (pending != null) seek(pending, isSeek: isSeek);
       });
     }
   }
+
+  Duration? _pendingSeekUntilDuration;
 
   /// 设置倍速
   Future<void> setPlaybackSpeed(double speed) async {
     lastPlaybackSpeed = playbackSpeed;
 
-    if (speed == _videoPlayerController?.state.rate) return;
+    if (speed == _snapshot.rate) return;
 
-    await _videoPlayerController?.setRate(speed);
+    if (_isNativeActive) {
+      await _nativeSession?.setRate(speed);
+    } else {
+      await _videoPlayerController?.setRate(speed);
+    }
+    applySnapshot(_snapshot.copyWith(rate: speed));
     if (!isLive) _playbackSpeed.value = speed;
     _updatePlaybackState();
     if (danmakuController != null) {
@@ -1269,9 +1551,12 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       await seekTo(Duration.zero, isSeek: false);
     }
 
-    // Mirrored before the await for the same reason as pause().
-    nativeControl?.call('play');
-    await _videoPlayerController?.play();
+    if (_isNativeActive) {
+      await _nativeSession?.play();
+    } else {
+      await _videoPlayerController?.play();
+    }
+    applySnapshot(_snapshot.copyWith(playing: true, completed: false));
 
     audioSessionHandler?.setActive(true);
 
@@ -1284,13 +1569,13 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   /// On that path mpv is not the player, so its play/pause/seek calls do
   /// nothing visible. Each control still goes through this controller, so the
   /// call is mirrored to the native surface here instead of at every button.
-  void Function(String method, [Map? args])? nativeControl;
-
   Future<void> pause({bool notify = true, bool isInterrupt = false}) async {
-    // Mirror first: on the native path there is no mpv controller, and awaiting
-    // a null one before this ran meant the command could be skipped entirely.
-    nativeControl?.call('pause');
-    await _videoPlayerController?.pause();
+    if (_isNativeActive) {
+      await _nativeSession?.pause();
+    } else {
+      await _videoPlayerController?.pause();
+    }
+    applySnapshot(_snapshot.copyWith(playing: false));
     playerStatus = .paused;
 
     // 主动暂停时让出音频焦点
@@ -1424,16 +1709,22 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   bool get isCompleted =>
-      videoPlayerController!.state.completed ||
-      durationInMilliseconds - positionInMilliseconds <= 50;
+      _snapshot.completed ||
+      (durationInMilliseconds > 0 &&
+          durationInMilliseconds - positionInMilliseconds <= 50);
 
   // 双击播放、暂停
   Future<void> onDoubleTapCenter() async {
     if (!isLive && isCompleted) {
-      await videoPlayerController!.seek(Duration.zero);
-      videoPlayerController!.play();
+      await seek(Duration.zero, isSeek: false);
+      await play();
+      return;
+    }
+    // Routed through the facade so the active backend is the one that moves.
+    if (playerStatus.isPlaying) {
+      await pause();
     } else {
-      videoPlayerController!.playOrPause();
+      await play();
     }
   }
 
@@ -1449,11 +1740,11 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   void onForward(Duration duration) {
-    onForwardBackward(videoPlayerController!.state.position + duration);
+    onForwardBackward(_snapshot.position + duration);
   }
 
   void onBackward(Duration duration) {
-    onForwardBackward(videoPlayerController!.state.position - duration);
+    onForwardBackward(_snapshot.position - duration);
   }
 
   void multiBackwardStart([_]) {
@@ -1471,10 +1762,11 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   void onForwardBackward(Duration duration) {
-    seekTo(
-      duration.clamp(Duration.zero, videoPlayerController!.state.duration),
-      isSeek: false,
-    ).whenComplete(play);
+    final total = _snapshot.duration;
+    final target = total > Duration.zero
+        ? duration.clamp(Duration.zero, total)
+        : (duration < Duration.zero ? Duration.zero : duration);
+    seekTo(target, isSeek: false).whenComplete(play);
   }
 
   void doubleTapFuc(DoubleTapType type) {
@@ -1745,6 +2037,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
 
     _removeListeners();
+    // The native session owns a player, a layer and temporary files; leaving it
+    // to the widget meant a force-quit or an out-of-order teardown leaked them.
+    closeNativeHdr();
     _positionListeners.clear();
     _statusListeners.clear();
     _stopWakeLockTimer();

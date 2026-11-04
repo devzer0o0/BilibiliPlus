@@ -100,10 +100,22 @@ class PLVideoPlayer extends StatefulWidget {
     this.danmuWidget,
     this.showEpisodes,
     this.showViewPoints,
+    this.nativeSurface,
+    this.subtitleOverlay,
     this.fill = Colors.black,
     this.alignment = Alignment.center,
     super.key,
   });
+
+  /// Drawn instead of the mpv texture when the native HDR backend is active.
+  ///
+  /// Only the picture moves: the controls, gestures, danmaku and progress bar
+  /// around it are the same widgets, so HDR cannot drift into a second, poorer
+  /// copy of the player UI.
+  final Widget? nativeSurface;
+
+  /// Subtitle overlay for the native path, where mpv does not decode cues.
+  final Widget? subtitleOverlay;
 
   final double maxWidth;
   final double maxHeight;
@@ -125,7 +137,10 @@ class PLVideoPlayer extends StatefulWidget {
 class _PLVideoPlayerState extends State<PLVideoPlayer>
     with WidgetsBindingObserver, TickerProviderStateMixin {
   late AnimationController _animationController;
-  late VideoController videoController;
+
+  /// Null when the native HDR backend is drawing the picture; every use below
+  /// is guarded, so "no mpv" is a supported state instead of a crash.
+  VideoController? videoController;
   late final CommonIntroController introController = widget.introController!;
   PgcIntroController get pgcController => introController as PgcIntroController;
   UgcIntroController get ugcController => introController as UgcIntroController;
@@ -267,7 +282,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       vsync: this,
       duration: const Duration(milliseconds: 100),
     );
-    videoController = plPlayerController.videoController!;
+    videoController = plPlayerController.videoController;
 
     if (PlatformUtils.isMobile) {
       Future.microtask(() {
@@ -1359,19 +1374,22 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
           Positioned.fill(top: 4, child: danmaku),
 
         if (!isLive)
-          Positioned.fill(
-            child: IgnorePointer(
-              ignoring: !plPlayerController.enableDragSubtitle,
-              child: Obx(
-                () => SubtitleView(
-                  controller: videoController,
-                  configuration: plPlayerController.subtitleConfig.value,
-                  enableDragSubtitle: plPlayerController.enableDragSubtitle,
-                  onUpdatePadding: plPlayerController.onUpdatePadding,
+          if (widget.subtitleOverlay case final overlay?)
+            Positioned.fill(child: IgnorePointer(child: overlay))
+          else if (videoController case final controller?)
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: !plPlayerController.enableDragSubtitle,
+                child: Obx(
+                  () => SubtitleView(
+                    controller: controller,
+                    configuration: plPlayerController.subtitleConfig.value,
+                    enableDragSubtitle: plPlayerController.enableDragSubtitle,
+                    onUpdatePadding: plPlayerController.onUpdatePadding,
+                  ),
                 ),
               ),
             ),
-          ),
 
         if (plPlayerController.enableTapDm)
           Obx(
@@ -2054,28 +2072,36 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                       plPlayerController.superResolutionType.value ==
                       SuperResolutionType.disable,
                 );
+                final controller = videoController;
                 return Transform.flip(
                   flipX: plPlayerController.flipX.value,
                   flipY: plPlayerController.flipY.value,
-                  child: PlatformUtils.supportsVideoOutputResize
-                      ? NativeVideoSurface(
-                          controller: videoController,
-                          transformationController: _transformationController,
-                          fit: videoFit.boxFit,
-                          alignment: widget.alignment,
-                          fill: widget.fill,
-                          aspectRatio: videoFit.aspectRatio,
-                          resizeOutput: resizeVideoOutput,
-                        )
-                      : FittedBox(
-                          fit: videoFit.boxFit,
-                          alignment: widget.alignment,
-                          child: SimpleVideo(
-                            controller: plPlayerController.videoController!,
-                            fill: widget.fill,
-                            aspectRatio: videoFit.aspectRatio,
-                          ),
-                        ),
+                  child: switch (controller) {
+                    // The native HDR surface replaces the picture, not the
+                    // player: the transform, overlay and gestures above stay.
+                    null => widget.nativeSurface ?? const SizedBox.shrink(),
+                    final controller =>
+                      PlatformUtils.supportsVideoOutputResize
+                          ? NativeVideoSurface(
+                              controller: controller,
+                              transformationController:
+                                  _transformationController,
+                              fit: videoFit.boxFit,
+                              alignment: widget.alignment,
+                              fill: widget.fill,
+                              aspectRatio: videoFit.aspectRatio,
+                              resizeOutput: resizeVideoOutput,
+                            )
+                          : FittedBox(
+                              fit: videoFit.boxFit,
+                              alignment: widget.alignment,
+                              child: SimpleVideo(
+                                controller: controller,
+                                fill: widget.fill,
+                                aspectRatio: videoFit.aspectRatio,
+                              ),
+                            ),
+                  },
                 );
               },
             ),

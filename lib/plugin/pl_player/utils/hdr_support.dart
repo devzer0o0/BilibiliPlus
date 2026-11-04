@@ -1,5 +1,7 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/services.dart' show MethodChannel;
+
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 
@@ -46,6 +48,26 @@ abstract final class HdrSupport {
   /// True when the quality ladder may offer 125/126/129 at all.
   static bool get allowsHdrQuality =>
       nativeHdrPath || supportsNativeHdr || supportsToneMappedHdr;
+
+  /// Whether this particular device can present extended range right now.
+  ///
+  /// [nativeHdrPath] only says the build has a native surface. A simulator, or
+  /// a device with HDR off, reports no HDR display mode: sending a PQ rendition
+  /// there makes AVFoundation filter out every alternate, so the item never
+  /// becomes ready and the screen stays black. Routing must use this, not the
+  /// platform check alone.
+  static Future<bool> canPresentHdr() async {
+    if (!nativeHdrPath) return false;
+    try {
+      final result = await const MethodChannel(
+        'pilipilus/hdr_video/control',
+      ).invokeMethod<Map>('hdrCapability');
+      return result?['supported'] == true;
+    } catch (_) {
+      // No native side means no native HDR surface.
+      return false;
+    }
+  }
 
   /// mpv options required to render HDR through an 8-bit output.
   static Map<String, String> get toneMappedPlayerOptions => {

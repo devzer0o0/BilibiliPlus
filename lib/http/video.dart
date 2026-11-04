@@ -15,6 +15,7 @@ import 'package:PiliPlus/models/model_hot_video_item.dart';
 import 'package:PiliPlus/models/model_rec_video_item.dart';
 import 'package:PiliPlus/models/pgc_lcf.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
+import 'package:PiliPlus/plugin/pl_player/models/subtitle_cue.dart';
 import 'package:PiliPlus/models_new/pgc/pgc_rank/pgc_rank_item_model.dart';
 import 'package:PiliPlus/models_new/popular/popular_precious/data.dart';
 import 'package:PiliPlus/models_new/popular/popular_series_list/list.dart';
@@ -917,7 +918,9 @@ abstract final class VideoHttp {
     if (res.data?['body'] case List list) {
       switch (format) {
         case .json:
-          throw UnimplementedError();
+          // The service already returns this shape; re-serialising it keeps
+          // one typed contract (see parseNativeSubtitle) for every caller.
+          return jsonEncode(list);
         case .vtt:
           return compute<List, String>(SubtitleUtils.json2Vtt, list);
         case .srt:
@@ -925,6 +928,16 @@ abstract final class VideoHttp {
       }
     }
     return null;
+  }
+
+  /// The subtitle body as cues, without a text format round-trip.
+  ///
+  /// Both renderers consume this: mpv gets a VTT generated from it, the native
+  /// overlay draws the cues directly.
+  static Future<List<SubtitleCue>> getSubtitleCues(String subtitleUrl) async {
+    final body = await getSubtitles(subtitleUrl, format: .json);
+    if (body == null) return const [];
+    return parseSubtitleCues(body);
   }
 
   // 视频排行

@@ -49,7 +49,9 @@ import 'package:PiliPlus/pages/video/send_danmaku/view.dart';
 import 'package:PiliPlus/pages/video/widgets/header_control.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
+import 'package:PiliPlus/plugin/pl_player/backend/playback_backend.dart';
 import 'package:PiliPlus/plugin/pl_player/models/heart_beat_type.dart';
+import 'package:PiliPlus/plugin/pl_player/models/subtitle_cue.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/hdr_support.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/hdr_video_surface.dart';
@@ -126,9 +128,44 @@ class VideoDetailController extends GetxController
   /// its own track, so the native player needs both.
   final Rxn<String> nativeHdrAudioUrl = Rxn<String>();
 
+  /// The byte ranges the playurl response declared for the two tracks.
+  ///
+  /// These are authoritative; discovering the layout again on the client only
+  /// gives it a chance to disagree with the server.
+  SegmentBaseRange? nativeHdrVideoRange;
+  SegmentBaseRange? nativeHdrAudioRange;
+
+  /// The chosen rendition's real codec string, size and rate.
+  ///
+  /// The native side declares these in the HLS master playlist, so they have to
+  /// be the values the media actually carries - not a guess.
+  String? nativeVideoCodecs;
+  String? nativeAudioCodecs;
+  int? nativeWidth;
+  int? nativeHeight;
+  String? nativeFrameRate;
+
   /// What the native layer reports it is presenting, for the UI to state
   /// honestly whether the picture is HDR.
   final Rxn<HdrPlaybackInfo> hdrPlaybackInfo = Rxn<HdrPlaybackInfo>();
+
+  /// Identity of the rendition the native session was opened with. Rotation,
+  /// full screen and layout changes must not alter it, or they would restart
+  /// the stream.
+  String get nativeSourceKey {
+    final video = firstVideoOrNull;
+    if (video == null) return '';
+    return '${bvid}:${cid.value}:${video.id}:${video.codecs}';
+  }
+
+  VideoItem? get firstVideoOrNull {
+    try {
+      return firstVideo;
+    } catch (_) {
+      // Not assigned until the first playurl response is parsed.
+      return null;
+    }
+  }
 
   /// Why the last playurl request failed, shown in place of the player.
   ///
@@ -770,6 +807,18 @@ class VideoDetailController extends GetxController
               audioSource: audioUrl,
             ),
       seekTo: seek,
+      // Selected once, here: a rendition that needs AVPlayerLayer never opens
+      // mpv at all, so there is no second decoder to silence or hide.
+      nativeHdrUrl: HdrSupport.nativeHdrPath ? nativeHdrUrl.value : null,
+      nativeHdrAudioUrl: nativeHdrAudioUrl.value,
+      nativeVideoRange: nativeHdrVideoRange,
+      nativeAudioRange: nativeHdrAudioRange,
+      nativeVideoCodecs: nativeVideoCodecs,
+      nativeAudioCodecs: nativeAudioCodecs,
+      nativeWidth: nativeWidth,
+      nativeHeight: nativeHeight,
+      nativeFrameRate: nativeFrameRate,
+      sourceKey: nativeSourceKey,
       duration: data.timeLength == null
           ? null
           : Duration(milliseconds: data.timeLength!),
@@ -811,6 +860,14 @@ class VideoDetailController extends GetxController
 
     defaultST = null;
   }
+
+  /// Cached answer to "can this device show HDR at all".
+  ///
+  /// The check is a platform query, not a build flag: a simulator reports no HDR
+  /// display modes, and routing a PQ track there is exactly what left the
+  /// player blank.
+  Future<bool>? _hdrAvailable;
+  Future<bool> get _hdrRouteAvailable => _hdrAvailable ??= HdrSupport.canPresentHdr();
 
   bool isQuerying = false;
 
@@ -869,6 +926,13 @@ class VideoDetailController extends GetxController
     // native URL, and the surface would replay the video just left.
     nativeHdrUrl.value = null;
     nativeHdrAudioUrl.value = null;
+    nativeHdrVideoRange = null;
+    nativeHdrAudioRange = null;
+    nativeVideoCodecs = null;
+    nativeAudioCodecs = null;
+    nativeWidth = null;
+    nativeHeight = null;
+    nativeFrameRate = null;
     hdrPlaybackInfo.value = null;
     try {
       await _queryVideoUrl(fromReset, autoFullScreenFlag);
@@ -909,7 +973,7 @@ class VideoDetailController extends GetxController
     // highest SDR rung, because a 10-bit stream through the 8-bit texture is
     // what turned the picture green.
     final result = await _getVideoUrl(
-      HdrSupport.nativeHdrPath
+      await _hdrRouteAvailable
           ? VideoQuality.hdr.code
           : VideoQuality.super8k.code,
     );
@@ -1012,10 +1076,19 @@ class VideoDetailController extends GetxController
       // An HDR rendition cannot be drawn through the 8-bit Flutter texture, so
       // the page hands it to AVPlayerLayer instead of mpv. Recorded here, where
       // the chosen rendition's codec is known.
-      nativeHdrUrl.value = VideoUtils.isTenBitCodec(firstVideo.codecs)
+        // A ten-bit rendition is only handed to AVPlayerLayer when this device can
+      // actually present extended range; otherwise every alternate is filtered
+      // out as unplayable and the item never becomes ready.
+      nativeHdrUrl.value =
+          VideoUtils.isTenBitCodec(firstVideo.codecs) && await _hdrRouteAvailable
           ? videoUrl
           : null;
       nativeHdrAudioUrl.value = nativeHdrUrl.value == null ? null : audioUrl;
+      nativeHdrVideoRange = SegmentBaseRange.fromJson(firstVideo.segmentBase);
+      nativeVideoCodecs = firstVideo.codecs;
+      nativeWidth = firstVideo.width;
+      nativeHeight = firstVideo.height;
+      nativeFrameRate = firstVideo.frameRate;
 
       AudioItem? firstAudio;
       final audioList = dash.audio;
@@ -1031,6 +1104,8 @@ class VideoDetailController extends GetxController
       }
       if (nativeHdrUrl.value != null) {
         nativeHdrAudioUrl.value = audioUrl;
+        nativeHdrAudioRange = SegmentBaseRange.fromJson(firstAudio?.segmentBase);
+        nativeAudioCodecs = firstAudio?.codecs;
       }
       await initPlayerIfNeeded(autoFullScreenFlag);
     } else {
@@ -1093,19 +1168,22 @@ class VideoDetailController extends GetxController
   ///
   /// The mpv path hands the track to the player and lets it render; there is no
   /// mpv on the native path, so the cues are read here and drawn in Flutter.
-  Future<List<({double from, double to, String text})>> nativeSubtitleCues() async {
+  Future<List<SubtitleCue>> nativeSubtitleCues() async {
     final index = vttSubtitlesIndex.value;
     if (index <= 0) return const [];
     var subtitle = vttSubtitles[index - 1];
     if (subtitle == null) {
       final url = subtitles[index - 1].subtitleUrl;
       if (url == null) return const [];
-      final result = await VideoHttp.getSubtitles(url);
+      // Cues directly: the native overlay consumes the typed list. Asking for
+      // VTT here and parsing it back was a second, lossy protocol for the same
+      // data, and it made the JSON branch look unused.
+      final result = await VideoHttp.getSubtitles(url, format: .json);
       if (result == null) return const [];
       subtitle = (isData: true, id: result);
       vttSubtitles[index - 1] = subtitle;
     }
-    return parseNativeSubtitle(subtitle.id);
+    return parseSubtitleCues(subtitle.id);
   }
 
   // 设定字幕轨道

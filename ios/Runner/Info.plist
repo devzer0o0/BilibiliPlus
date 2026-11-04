@@ -141,5 +141,26 @@
 		</array>
 		<key>ITSAppUsesNonExemptEncryption</key>
 		<false/>
+		<key>NSAppTransportSecurity</key>
+		<dict>
+			<!-- The HDR bridge serves one session on loopback. ATS otherwise
+			     refuses plain HTTP to it; the exception is scoped to localhost
+			     rather than disabling transport security for the app. -->
+			<key>NSAllowsLocalNetworking</key>
+			<true/>
+			<key>NSExceptionDomains</key>
+			<dict>
+				<key>127.0.0.1</key>
+				<dict>
+					<key>NSExceptionAllowsInsecureHTTPLoads</key>
+					<true/>
+				</dict>
+				<key>localhost</key>
+				<dict>
+					<key>NSExceptionAllowsInsecureHTTPLoads</key>
+					<true/>
+				</dict>
+			</dict>
+		</dict>
 	</dict>
 </plist>
