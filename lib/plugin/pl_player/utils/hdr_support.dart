@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter/services.dart' show MethodChannel;
 
 import 'package:PiliPlus/utils/platform_utils.dart';
@@ -17,6 +18,31 @@ import 'package:PiliPlus/utils/storage_pref.dart';
 /// [toneMappedPlayerOptions] lets libplacebo convert HDR into the SDR gamut
 /// first, which is correct but costs a full-range conversion per frame. Until
 /// the texture path is 10-bit end to end, HDR stays opt-in behind this switch.
+/// What the native path said about HDR, with the reasons kept separate.
+///
+/// [eligible] is the device's own answer (eligibleForHDRPlayback);
+/// [canPresent] is whether the current output can actually show it. Neither is
+/// evidence that a picture is being displayed with extended range.
+@immutable
+class HdrPathCapability {
+  const HdrPathCapability({
+    required this.canPresent,
+    required this.eligible,
+    this.availableModes = 0,
+    this.reason,
+  });
+
+  final bool canPresent;
+  final bool eligible;
+  final int availableModes;
+  final String? reason;
+
+  @override
+  String toString() =>
+      'HdrPathCapability(canPresent=$canPresent eligible=$eligible '
+      'modes=$availableModes reason=${reason ?? '-'})';
+}
+
 abstract final class HdrSupport {
   /// Set to true once the Darwin texture path carries 10-bit frames.
   ///
@@ -56,17 +82,64 @@ abstract final class HdrSupport {
   /// there makes AVFoundation filter out every alternate, so the item never
   /// becomes ready and the screen stays black. Routing must use this, not the
   /// platform check alone.
-  static Future<bool> canPresentHdr() async {
-    if (!nativeHdrPath) return false;
+  static Future<bool> canPresentHdr() async =>
+      (await describeHdrPath())?.canPresent ?? false;
+
+  /// The capability answer, with the reasons behind it.
+  ///
+  /// Cached for a short while rather than forever: HDR availability changes
+  /// when an external display is attached, when display settings change and
+  /// when the system reports a new mode list. A cached "no" for the whole
+  /// session is what made a capable device look incapable after one early call.
+  static HdrPathCapability? _cached;
+  static DateTime? _cachedAt;
+  static const _cacheWindow = Duration(seconds: 20);
+
+  static Future<HdrPathCapability?> describeHdrPath() async {
+    if (!nativeHdrPath) {
+      return const HdrPathCapability(
+        canPresent: false,
+        eligible: false,
+        reason: '当前渲染通路为 8-bit 纹理',
+      );
+    }
+    final at = _cachedAt;
+    if (at != null && DateTime.now().difference(at) < _cacheWindow) {
+      return _cached;
+    }
     try {
       final result = await const MethodChannel(
         'pilipilus/hdr_video/control',
       ).invokeMethod<Map>('hdrCapability');
-      return result?['supported'] == true;
+      final eligible = result?['eligibleForHdrPlayback'] == true;
+      final modes = (result?['availableHdrModes'] as num?)?.toInt() ?? 0;
+      final canPresent = result?['supported'] == true;
+      final capability = HdrPathCapability(
+        canPresent: canPresent,
+        eligible: eligible,
+        availableModes: modes,
+        reason: canPresent
+            ? null
+            : '设备或当前输出不支持 HDR 呈现',
+      );
+      _cached = capability;
+      _cachedAt = DateTime.now();
+      return capability;
     } catch (_) {
       // No native side means no native HDR surface.
-      return false;
+      return const HdrPathCapability(
+        canPresent: false,
+        eligible: false,
+        reason: '原生播放组件不可用',
+      );
     }
+  }
+
+  /// Drops the cached answer. Called when the app returns to the foreground or
+  /// a display configuration change is reported.
+  static void invalidateCapabilityCache() {
+    _cached = null;
+    _cachedAt = null;
   }
 
   /// mpv options required to render HDR through an 8-bit output.

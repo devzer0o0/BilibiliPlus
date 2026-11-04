@@ -11,25 +11,55 @@ import 'package:flutter/widgets.dart';
 /// This is diagnostic output, not the state channel: playback state reaches the
 /// UI through [PlaybackSnapshot] so a stalled picture and a paused one are not
 /// inferred from an occasional poll.
+///
+/// Three questions stay separate here, because collapsing them is what let a
+/// HEVC Main10 SDR clip be labelled "confirmed HDR":
+///
+///  * what the media is - [transferFunction], [primaries], [bitDepth],
+///    [dolbyVision];
+///  * what the path can do - [eligibleForHdrPlayback], [edrRequested];
+///  * what the screen shows - [hdrPresented], which no public API can assert.
 @immutable
 class HdrPlaybackInfo {
   const HdrPlaybackInfo({
-    this.hdr = false,
+    this.hdr,
     this.edrRequested = false,
     this.primaries,
     this.transfer,
+    this.transferFunction,
+    this.matrix,
+    this.codec,
+    this.bitDepth,
+    this.dolbyVision,
     this.width = 0,
     this.height = 0,
     this.source = '',
     this.audio = '',
     this.rate = 0,
     this.seconds = 0,
+    this.ready = false,
   });
 
-  final bool hdr;
+  /// True (HDR), false (the track says SDR), or null (unknown).
+  ///
+  /// Null is not "false": a missing descriptor is not evidence of SDR, and the
+  /// panel has to be able to say 检测中 instead of inventing an answer.
+  final bool? hdr;
+
+  /// The layer was told to composite extended range. A request, not a result.
   final bool edrRequested;
+
   final String? primaries;
   final String? transfer;
+
+  /// Normalised transfer function: PQ, HLG, SDR, or null when unknown.
+  final String? transferFunction;
+
+  final String? matrix;
+  final String? codec;
+  final int? bitDepth;
+  final Map<Object?, Object?>? dolbyVision;
+
   final int width;
   final int height;
 
@@ -41,24 +71,48 @@ class HdrPlaybackInfo {
 
   final double rate;
   final double seconds;
+  final bool ready;
+
+  bool get isReady => ready;
+
+  /// What to display for the source dynamic range.
+  ///
+  /// 未知 is a real answer here; the panel must not claim SDR for a stream it
+  /// has no metadata for.
+  String get dynamicRangeLabel {
+    if (dolbyVision != null) return 'Dolby Vision';
+    return switch (transferFunction) {
+      'PQ' => 'HDR10',
+      'HLG' => 'HLG',
+      'SDR' => 'SDR',
+      _ => hdr == true ? 'HDR' : (hdr == false ? 'SDR' : '未知'),
+    };
+  }
 
   factory HdrPlaybackInfo.fromMap(Map<Object?, Object?> map) => HdrPlaybackInfo(
-    hdr: map['hdr'] == true,
+    // Absent stays null; false is a statement the track made.
+    hdr: map['hdr'] as bool?,
     edrRequested: map['edrRequested'] == true,
     primaries: map['primaries'] as String?,
     transfer: map['transfer'] as String?,
-    width: (map['width'] as num?)?.toInt() ?? 0,
-    height: (map['height'] as num?)?.toInt() ?? 0,
+    transferFunction: map['transferFunction'] as String?,
+    matrix: map['matrix'] as String?,
+    codec: map['codec'] as String?,
+    bitDepth: (map['bitDepth'] as num?)?.toInt(),
+    dolbyVision: map['dolbyVision'] as Map?,
+    width: ((map['codedWidth'] ?? map['width']) as num?)?.toInt() ?? 0,
+    height: ((map['codedHeight'] ?? map['height']) as num?)?.toInt() ?? 0,
     source: map['source'] as String? ?? '',
     audio: map['audio'] as String? ?? '',
     rate: (map['rate'] as num?)?.toDouble() ?? 0,
     seconds: (map['seconds'] as num?)?.toDouble() ?? 0,
+    ready: map['ready'] == true,
   );
 
   @override
   String toString() =>
-      'hdr=$hdr edr=$edrRequested ${primaries ?? '-'}/${transfer ?? '-'} '
-      '${width}x$height src=$source';
+      'hdr=${hdr ?? 'unknown'} edr=$edrRequested '
+      'tf=${transferFunction ?? '-'} ${width}x$height src=$source';
 }
 
 /// A video surface backed by AVPlayerLayer instead of mpv.

@@ -35,6 +35,7 @@ import 'package:PiliPlus/pages/video/introduction/ugc/controller.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/action_item.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/menu_row.dart';
 import 'package:PiliPlus/pages/video/widgets/header_mixin.dart';
+import 'package:PiliPlus/plugin/pl_player/backend/playback_route.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_repeat.dart';
@@ -770,12 +771,15 @@ class HeaderControlState extends State<HeaderControl>
                     leading: const Icon(Icons.download_outlined, size: 20),
                     title: const Text('保存字幕', style: titleStyle),
                   ),
-                if (plPlayerController.videoPlayerController case final player?)
+                // Shown for both backends: the native path has no mpv player
+                // to describe, and hiding the row there meant the only thing
+                // that could say "this is not really HDR" was unavailable.
+                if (plPlayerController.route.canCommand)
                   ListTile(
                     dense: true,
                     title: const Text('播放信息', style: titleStyle),
                     leading: const Icon(Icons.info_outline, size: 20),
-                    onTap: () => showPlayerInfo(context, player: player),
+                    onTap: () => showPlaybackInfo(context),
                   ),
                 ListTile(
                   dense: true,
@@ -789,6 +793,85 @@ class HeaderControlState extends State<HeaderControl>
                   },
                   leading: const Icon(Icons.error_outline, size: 20),
                   title: const Text('举报', style: titleStyle),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// The player info panel, for whichever backend is active.
+  ///
+  /// Reports what is *actually* playing: the chosen rendition's real size,
+  /// codec and frame rate, the active path, the source dynamic range and any
+  /// fallback reason. The mpv-only detail rows are kept for the mpv path,
+  /// because that is the only place they exist.
+  void showPlaybackInfo(BuildContext context) {
+    final ctr = plPlayerController;
+    final detail = videoDetailCtr;
+    final player = ctr.videoPlayerController;
+    if (player != null && ctr.route.isMpv) {
+      showPlayerInfo(context, player: player);
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (context) {
+        final info = detail.hdrPlaybackInfo.value;
+        final fallback = detail.lastRenditionFallback.value;
+        final video = detail.firstVideoOrNull;
+        String row(String label, String? value) =>
+            '$label: ${(value == null || value.isEmpty) ? '未知' : value}';
+        final lines = <String>[
+          row('播放路径', switch (ctr.route) {
+            PlaybackRoute.mpv => 'mpv (media_kit)',
+            PlaybackRoute.native => '原生 AVPlayerLayer',
+            PlaybackRoute.preparing => '准备中',
+            PlaybackRoute.none => '未开始',
+            PlaybackRoute.disposed => '已释放',
+          }),
+          row(
+            '源分辨率',
+            video == null ? null : '${video.width}x${video.height}',
+          ),
+          row('帧率', video?.frameRate),
+          row('编码', video?.codecs),
+          row('播放器内尺寸', info == null ? null : '${info.width}x${info.height}'),
+          row('源动态范围', info?.dynamicRangeLabel),
+          row('传递函数', info?.transferFunction ?? info?.transfer),
+          row('色彩原色', info?.primaries),
+          row('位深', info?.bitDepth?.toString()),
+          row(
+            'HDR 播放资格',
+            info == null
+                ? null
+                : (info.edrRequested ? '已请求扩展动态范围' : '未请求'),
+          ),
+          row('音频', info?.audio),
+          row('媒体适配', info?.source),
+          if (fallback != null) row('回退原因', fallback.message),
+        ];
+        return AlertDialog(
+          title: const Text('播放信息'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final line in lines)
+                  ListTile(
+                    dense: true,
+                    title: Text(line),
+                    onTap: () => Utils.copyText(lines.join('\n')),
+                  ),
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    '动态范围来自媒体元数据；它描述片源，不代表屏幕已经呈现 HDR。',
+                    style: TextStyle(fontSize: 12),
+                  ),
                 ),
               ],
             ),

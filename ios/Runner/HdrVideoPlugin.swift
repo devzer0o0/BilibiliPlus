@@ -83,7 +83,16 @@ final class HdrVideoPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       if #available(iOS 17.0, *) {
         modes = AVPlayer.availableHDRModes.rawValue
       }
-      result(["availableHdrModes": Int(modes), "supported": modes != 0])
+      // `eligibleForHDRPlayback` is available on the deployment floor and is the
+      // signal that actually answers "can this device play HDR". The iOS 17
+      // mode mask is an *additional* answer, not the only one: requiring it made
+      // an iOS 15/16 device look incapable even when it was not.
+      let eligible = AVPlayer.eligibleForHDRPlayback
+      result([
+        "availableHdrModes": Int(modes),
+        "eligibleForHdrPlayback": eligible,
+        "supported": eligible || modes != 0,
+      ])
       return
     }
 
@@ -187,7 +196,8 @@ final class HdrVideoPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       audioCodecs: args["audioCodecs"] as? String,
       width: args["width"] as? Int,
       height: args["height"] as? Int,
-      frameRate: (args["frameRate"] as? String).flatMap(Double.init)
+      frameRate: (args["frameRate"] as? String).flatMap(Double.init),
+      declaredVideoRange: args["videoRange"] as? String
     )
   }
 
@@ -217,19 +227,28 @@ final class HdrVideoSession {
     let width: Int?
     let height: Int?
     let frameRate: Double?
+    /// VIDEO-RANGE the caller already established for this rendition (SDR, PQ,
+    /// HLG), or nil when it is not known. Never invented here.
+    let declaredVideoRange: String?
   }
 
-  /// The HLS video range for this rendition.
+  /// What the codec string alone can justify - no more.
   ///
-  /// Ten-bit HEVC is offered as HDR10 (PQ) or HLG; everything else is SDR. The
-  /// real transfer function is read back from the format description in
-  /// describe(), so this only has to agree with what will actually be decoded.
+  /// The old version mapped "HEVC Main10" to PQ and everything else to SDR.
+  /// Both halves were wrong: 10-bit is not a transfer function (10-bit SDR
+  /// exists, and Bilibili ships HLG as well as PQ), and a non-HEVC stream can
+  /// be HDR too (AV1 HDR is served). A codec string cannot tell us the transfer
+  /// function, so when it cannot, the answer is nil and the master playlist
+  /// declares nothing rather than guessing.
+  ///
+  /// The authoritative answer comes from the format description once the item
+  /// is ready (see describeFormats); this only has to avoid *asserting* a range
+  /// the media did not claim.
   static func videoRange(for media: Media) -> String? {
-    let codecs = media.videoCodecs ?? ""
-    let hevc = codecs.hasPrefix("hev1") || codecs.hasPrefix("hvc1")
-    guard hevc else { return "SDR" }
-    let tenBit = codecs.contains("hvc1.2") || codecs.contains("hev1.2")
-    return tenBit ? "PQ" : "SDR"
+    // Dolby Vision and HLG rungs arrive with a range the caller already
+    // established; anything else is left undeclared and read back from the
+    // track once it is decoded. No codec string is turned into a range.
+    media.declaredVideoRange
   }
 
   let player = AVPlayer()
@@ -241,7 +260,12 @@ final class HdrVideoSession {
   private var endObserver: NSObjectProtocol?
 
   private var media = Media(
-    videoCodecs: nil, audioCodecs: nil, width: nil, height: nil, frameRate: nil
+    videoCodecs: nil,
+    audioCodecs: nil,
+    width: nil,
+    height: nil,
+    frameRate: nil,
+    declaredVideoRange: nil
   )
   private var desiredPlaying = true
   private var desiredRate: Double = 1
@@ -758,9 +782,15 @@ final class HdrVideoSession {
       "seconds": CMTimeGetSeconds(player.currentTime()),
       "duration": player.currentItem.map { CMTimeGetSeconds($0.duration) } ?? 0,
     ]
+    // HDR playback eligibility is the public iOS 11+ signal and it survives
+    // when the newer dynamic-range APIs are unavailable; the project's floor is
+    // iOS 15, so the iOS 17-only modes are reported when present and never
+    // treated as the sole answer.
+    out["eligibleForHdrPlayback"] = AVPlayer.eligibleForHDRPlayback
     if #available(iOS 17.0, *) {
       out["availableHdrModes"] = AVPlayer.availableHDRModes.rawValue
     }
+    out["displaySupportsHdr"] = Self.displaySupportsHdr()
     guard let item = player.currentItem else {
       traceDescription(out)
       return out
@@ -780,21 +810,72 @@ final class HdrVideoSession {
     return described
   }
 
+  /// Reads the real colour description out of the decoded track.
+  ///
+  /// Three answers, not two: `hdr` is true only when the transfer function is
+  /// one of the extended-range ones, false when the track says SDR, and absent
+  /// when the metadata is not there. The old version defaulted the missing case
+  /// to false, which the UI then rendered as "confirmed SDR".
   static func describeFormats(_ track: AVAssetTrack, into out: [String: Any]) -> [String: Any] {
     var out = out
     let descriptions = (track.formatDescriptions as? [CMFormatDescription]) ?? []
     guard let format = descriptions.first else { return out }
+    let codec = CMFormatDescriptionGetMediaSubType(format)
+    out["codec"] = fourCC(codec)
+    let dims = CMVideoFormatDescriptionGetDimensions(format)
+    out["codedWidth"] = Int(dims.width)
+    out["codedHeight"] = Int(dims.height)
     if let ext = CMFormatDescriptionGetExtensions(format) as? [String: Any] {
       let primaries = ext["CVImageBufferColorPrimaries"] as? String
       let transfer = ext["CVImageBufferTransferFunction"] as? String
+      let matrix = ext["CVImageBufferYCbCrMatrix"] as? String
       out["primaries"] = primaries
       out["transfer"] = transfer
-      // PQ (HDR10) and HLG are the extended-range transfer functions the
-      // catalogue serves; anything else is SDR. Ten-bit alone is not HDR.
-      out["hdr"] = (transfer?.contains("2084") == true)
-        || (transfer?.contains("HLG") == true)
+      out["matrix"] = matrix
+      if let depth = ext["BitsPerComponent"] as? Int { out["bitDepth"] = depth }
+      if let dv = ext["DolbyVisionConfiguration"] as? [String: Any] {
+        out["dolbyVision"] = dv
+        out["hdr"] = true
+        return out
+      }
+      if let transfer {
+        if transfer.contains("2084") {
+          out["hdr"] = true
+          out["transferFunction"] = "PQ"
+        } else if transfer.contains("HLG") || transfer.contains("2100") {
+          out["hdr"] = true
+          out["transferFunction"] = "HLG"
+        } else {
+          // A named SDR transfer function is a positive statement.
+          out["hdr"] = false
+          out["transferFunction"] = "SDR"
+        }
+        return out
+      }
     }
+    // No colour metadata: leave `hdr` absent rather than claiming SDR.
     return out
+  }
+
+  /// Whether the current display can show extended range at all.
+  ///
+  /// Kept separate from eligibility: a device can be HDR-capable while the
+  /// current screen brightness mode, an external output or a screenshot
+  /// context turns it off. Cached by the system, re-read per description.
+  static func displaySupportsHdr() -> Bool {
+    #if canImport(UIKit)
+    return UIScreen.main.traitCollection.displayGamut == .P3
+    #else
+    return false
+    #endif
+  }
+
+  static func fourCC(_ code: FourCharCode) -> String {
+    let bytes: [UInt8] = [
+      UInt8((code >> 24) & 0xff), UInt8((code >> 16) & 0xff),
+      UInt8((code >> 8) & 0xff), UInt8(code & 0xff),
+    ]
+    return String(bytes: bytes, encoding: .ascii) ?? "????"
   }
 }
 

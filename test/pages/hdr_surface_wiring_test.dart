@@ -38,10 +38,12 @@ void main() {
       expect(snapshot.hdr, isTrue);
     });
 
-    test('a missing description does not claim HDR', () {
+    test('a missing description claims neither HDR nor SDR', () {
       final snapshot = HdrPlaybackInfo.fromMap({'seconds': 1.0});
-      expect(snapshot.hdr, isFalse);
+      // Null, not false: an absent descriptor is not evidence of SDR.
+      expect(snapshot.hdr, isNull);
       expect(snapshot.edrRequested, isFalse);
+      expect(snapshot.dynamicRangeLabel, '未知');
     });
   });
 

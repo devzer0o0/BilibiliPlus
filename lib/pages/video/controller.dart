@@ -956,7 +956,18 @@ class VideoDetailController extends GetxController
   /// display modes, and routing a PQ track there is exactly what left the
   /// player blank.
   Future<bool>? _hdrAvailable;
-  Future<bool> get _hdrRouteAvailable => _hdrAvailable ??= HdrSupport.canPresentHdr();
+  Future<bool> get _hdrRouteAvailable =>
+      _hdrAvailable ??= HdrSupport.canPresentHdr();
+
+  /// Drops the cached HDR answer so the next request re-reads the device.
+  ///
+  /// Called when the app comes back to the foreground: display settings,
+  /// external displays and the system's mode list can all change while the app
+  /// is away, and a session-long "no" would keep a capable device on SDR.
+  void refreshHdrCapability() {
+    HdrSupport.invalidateCapabilityCache();
+    _hdrAvailable = null;
+  }
 
   bool isQuerying = false;
 
@@ -1158,6 +1169,11 @@ class VideoDetailController extends GetxController
         allowHdrRungs: await _hdrRouteAvailable,
       );
       lastRenditionFallback.value = selected.fallback;
+      // One notice per switch, and only when the result is not what was asked
+      // for. A silent downgrade is the failure this exists to prevent.
+      if (selected.fallback case final fallback?) {
+        SmartDialog.showToast(fallback.message);
+      }
       firstVideo = selected.video;
       currentDecodeFormats = selected.decode;
       currentVideoQa.value = VideoQuality.fromCode(selected.video.id);
