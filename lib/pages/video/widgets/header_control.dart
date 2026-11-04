@@ -2031,8 +2031,15 @@ class HeaderControlState extends State<HeaderControl>
                     ),
                   ),
                 ),
+                // Offered when the *active backend* can hand its picture over:
+                // the mpv texture through IOSPipHelper, the AVPlayerLayer
+                // through the native PiP controller. Checking only
+                // IOSPipHelper.isAvailable hid the button on the native path
+                // even though that is the path with the better PiP.
                 if ((Platform.isAndroid && PiliAndroidHelper.isPipAvailable) ||
-                    (Platform.isIOS && IOSPipHelper.isAvailable) ||
+                    (Platform.isIOS &&
+                        (plPlayerController.route.isNative ||
+                            IOSPipHelper.isAvailable)) ||
                     (PlatformUtils.isDesktop && !isFullScreen))
                   SizedBox(
                     width: btnWidth,
@@ -2040,12 +2047,18 @@ class HeaderControlState extends State<HeaderControl>
                     child: IconButton(
                       tooltip: '画中画',
                       style: btnStyle,
-                      onPressed: () {
+                      onPressed: () async {
                         if (PlatformUtils.isDesktop) {
                           plPlayerController.toggleDesktopPip();
-                        } else {
-                          plPlayerController.enterPip();
+                          return;
                         }
+                        if (plPlayerController.route.isNative) {
+                          // Failure is reported by the coordinator; the button
+                          // does not go silent when the system refuses.
+                          await plPlayerController.enterPip();
+                          return;
+                        }
+                        await plPlayerController.enterPip();
                       },
                       icon: const Icon(
                         Icons.picture_in_picture_outlined,

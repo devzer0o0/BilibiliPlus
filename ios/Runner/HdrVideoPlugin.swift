@@ -1,4 +1,5 @@
 import AVFoundation
+import AVKit
 import Flutter
 import UIKit
 
@@ -181,6 +182,23 @@ final class HdrVideoPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       case "setRate":
         session.setRate((args["rate"] as? NSNumber)?.doubleValue ?? 1)
         result(nil)
+      case "setInterrupted":
+        // A PiP control, an audio interruption or a call owns the intent while
+        // it lasts; the session must not resume over it.
+        session.interrupted = args["interrupted"] as? Bool ?? false
+        session.setPlaying(!(args["interrupted"] as? Bool ?? false))
+        result(nil)
+      case "pipStart":
+        if let failure = session.startPip() {
+          result(
+            FlutterError(code: "pip_failed", message: failure, details: nil)
+          )
+        } else {
+          result(nil)
+        }
+      case "pipStop":
+        session.stopPip()
+        result(nil)
       case "describe":
         result(session.describe())
       default:
@@ -217,7 +235,7 @@ final class HdrVideoPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   }
 }
 /// One playback session: an AVPlayerItem fed by the HLS bridge.
-final class HdrVideoSession {
+final class HdrVideoSession: NSObject {
   /// What the source actually is. Declared in the HLS master playlist and
   /// checked against the init segment by AVFoundation; a mismatch there fails
   /// the item after the first fragment is fetched.
@@ -253,6 +271,17 @@ final class HdrVideoSession {
 
   let player = AVPlayer()
   let layer: AVPlayerLayer
+
+  /// Native PiP for this session, created lazily once the layer is attached.
+  private var pip: AVPictureInPictureController?
+  private var pipPossibleObservation: NSKeyValueObservation?
+
+  /// Whether the platform can offer PiP for this session at all.
+  var pipAvailable: Bool {
+    AVPictureInPictureController.isPictureInPictureSupported()
+  }
+
+  var pipActive: Bool { pip?.isPictureInPictureActive ?? false }
   private(set) var sessionId: String
   private var bridge: HlsBridge?
   private var statusObserver: NSKeyValueObservation?
@@ -307,6 +336,7 @@ final class HdrVideoSession {
       layer.wantsExtendedDynamicRangeContent = true
       edrRequested = true
     }
+    super.init()
     open(videoUrl: videoUrl, audioUrl: audioUrl)
   }
 
@@ -594,6 +624,7 @@ final class HdrVideoSession {
       self.emit(force: true)
     }
     player.replaceCurrentItem(with: item)
+    preparePip()
 
     if timeObserver == nil {
       timeObserver = player.addPeriodicTimeObserver(
@@ -605,6 +636,36 @@ final class HdrVideoSession {
         self.emit()
       }
     }
+  }
+
+  /// Creates the PiP controller for the same AVPlayerLayer.
+  ///
+  /// No second player: PiP hands the existing layer to the system, so audio,
+  /// video and the clock stay the ones this session already owns. Creating the
+  /// controller per session (not per view) is what lets the picture survive the
+  /// view being unbound while PiP is open.
+  private func preparePip() {
+    guard pip == nil, pipAvailable else { return }
+    guard let controller = AVPictureInPictureController(playerLayer: layer) else {
+      return
+    }
+    controller.delegate = self
+    if #available(iOS 14.2, *) {
+      controller.canStartPictureInPictureAutomaticallyFromInline = false
+    }
+    pip = controller
+  }
+
+  /// Starts PiP. Returns the failure reason, or nil when it started.
+  func startPip() -> String? {
+    guard let pip else { return "unsupported" }
+    guard pip.isPictureInPicturePossible else { return "not-possible" }
+    pip.startPictureInPicture()
+    return nil
+  }
+
+  func stopPip() {
+    pip?.stopPictureInPicture()
   }
 
   /// Applies the user's intent, not the player's momentary state.
@@ -629,14 +690,26 @@ final class HdrVideoSession {
   }
 
   /// Recovers from a stall the way intent would, without overriding it.
+  ///
+  /// The distinction that was missing: a pause the *system* asked for - the PiP
+  /// window's own pause button, an audio interruption, a call - is
+  /// indistinguishable from a stall if the only evidence is
+  /// `timeControlStatus == .paused`. Playing again on the next tick therefore
+  /// fought the user's PiP control. A stall is now recognised by the reason the
+  /// player reports, not by the mere fact that it is paused.
   private func resumeIfStalled() {
-    guard ready, !completed, desiredPlaying else { return }
+    guard ready, !completed, desiredPlaying, !interrupted else { return }
     guard player.currentItem?.status == .readyToPlay else { return }
-    if player.timeControlStatus == .paused {
-      player.play()
-      player.rate = Float(desiredRate)
-    }
+    guard player.timeControlStatus == .paused else { return }
+    // .toPlayPaused means the player wanted to play but is waiting on data.
+    // Anything else (paused, or a rate the system set) is not ours to override.
+    guard player.reasonForWaitingToPlay != nil else { return }
+    player.play()
+    player.rate = Float(desiredRate)
   }
+
+  /// Set while something outside this session owns the playback intent.
+  var interrupted = false
 
   func setPlaying(_ playing: Bool) {
     HlsBridge.trace("setPlaying \(playing) ready=\(ready)")
@@ -675,6 +748,10 @@ final class HdrVideoSession {
     if disposed { return }
     disposed = true
     cancelPreparation()
+    pip?.delegate = nil
+    pip = nil
+    pipPossibleObservation?.invalidate()
+    pipPossibleObservation = nil
     statusObserver?.invalidate()
     statusObserver = nil
     if let timeObserver {
@@ -876,6 +953,54 @@ final class HdrVideoSession {
       UInt8((code >> 8) & 0xff), UInt8(code & 0xff),
     ]
     return String(bytes: bytes, encoding: .ascii) ?? "????"
+  }
+}
+
+extension HdrVideoSession: AVPictureInPictureControllerDelegate {
+  func pictureInPictureControllerDidStartPictureInPicture(
+    _ controller: AVPictureInPictureController
+  ) {
+    // The system now owns presentation; the session keeps decoding and its
+    // intent is unchanged, but a stall-recovery must not fight it.
+    interrupted = true
+    HdrVideoPlugin.broadcast([
+      "event": "pip",
+      "sessionId": sessionId,
+      "state": "started",
+    ])
+  }
+
+  func pictureInPictureControllerDidStopPictureInPicture(
+    _ controller: AVPictureInPictureController
+  ) {
+    interrupted = false
+    HdrVideoPlugin.broadcast([
+      "event": "pip",
+      "sessionId": sessionId,
+      "state": "stopped",
+    ])
+  }
+
+  func pictureInPictureController(
+    _ controller: AVPictureInPictureController,
+    failedToStartPictureInPictureWithError error: Error
+  ) {
+    HdrVideoPlugin.broadcast([
+      "event": "pip",
+      "sessionId": sessionId,
+      "state": "failed",
+      "message": error.localizedDescription,
+    ])
+  }
+
+  func pictureInPictureControllerWillStartPictureInPicture(
+    _ controller: AVPictureInPictureController
+  ) {
+    HdrVideoPlugin.broadcast([
+      "event": "pip",
+      "sessionId": sessionId,
+      "state": "starting",
+    ])
   }
 }
 

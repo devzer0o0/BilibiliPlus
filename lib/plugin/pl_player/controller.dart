@@ -19,6 +19,7 @@ import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/models_new/video/video_shot/data.dart';
 import 'package:PiliPlus/pages/danmaku/danmaku_model.dart';
 import 'package:PiliPlus/pages/sponsor_block/block_mixin.dart';
+import 'package:PiliPlus/plugin/pl_player/backend/native_pip.dart';
 import 'package:PiliPlus/plugin/pl_player/backend/native_session_host.dart';
 import 'package:PiliPlus/plugin/pl_player/backend/playback_route.dart';
 import 'package:PiliPlus/plugin/pl_player/backend/source_identity.dart';
@@ -60,7 +61,8 @@ import 'package:PiliPlus/utils/utils.dart';
 import 'package:archive/archive.dart' show getCrc32;
 import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:easy_debounce/easy_throttle.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, kDebugMode, visibleForTesting;
 import 'package:flutter/services.dart'
     show DeviceOrientation, HapticFeedback, KeyDownEvent;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -327,6 +329,17 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   PlaybackBackend Function(int generation, String sessionId)?
   nativeBackendOverride;
 
+  /// Native PiP for the AVPlayerLayer path.
+  ///
+  /// Separate from IOSPipHelper, which mirrors the mpv texture: one of them is
+  /// wrong for whichever backend is active, so they are chosen by route rather
+  /// than both being offered.
+  NativePipCoordinator? _nativePip;
+  NativePipCoordinator get nativePip =>
+      _nativePip ??= NativePipCoordinator();
+  ValueListenable<NativePipStatus> get nativePipStatus =>
+      nativePip.status;
+
   bool get _isNativeActive => route.isNative;
 
   bool get isNativeHdrActive => _isNativeActive;
@@ -367,6 +380,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _routing = PlaybackRoute.native;
     _nativeEvents?.cancel();
     _nativeEvents = null;
+    await _nativePip?.bind(request.sourceKey);
     playerStatus = request.autoPlay ? PlayerStatus.playing : PlayerStatus.paused;
     await host.open(
       generation: generation,
@@ -391,6 +405,12 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   /// Stops the native session and returns ownership to mpv.
   Future<void> closeNativeHdr() async {
+    // End PiP before the layer goes away: leaving it running means the system
+    // holds a layer whose session is being disposed, which is how a black PiP
+    // window with audio from nowhere appears.
+    if (_nativePip?.status.value.isShowing ?? false) {
+      await _nativePip?.stop();
+    }
     await _nativeEvents?.cancel();
     _nativeEvents = null;
     final host = _nativeHost;
@@ -631,8 +651,22 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     return routeName == '/videoV' || routeName == '/liveRoom';
   }
 
-  void enterPip({bool autoEnter = false}) {
-    if (videoPlayerController case NativePlayer(:final state)) {
+  /// Enters PiP on whichever backend is active.
+  ///
+  /// The two paths are genuinely different: mpv hands over its texture, the
+  /// native path hands over the AVPlayerLayer. Choosing by route is what stops
+  /// a texture id from being requested for a player that has none.
+  Future<void> enterPip({bool autoEnter = false}) async {
+    if (route.isNative) {
+      final status = await nativePip.start();
+      if (status.state == NativePipState.failed) {
+        _toast(status.message ?? '画中画启动失败');
+      }
+      return;
+    }
+    final player = videoPlayerController;
+    if (player != null) {
+      final state = player.state;
       if (Platform.isIOS) {
         if (videoController?.id.value case final textureId?) {
           IOSPipHelper.enter(
@@ -652,7 +686,18 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         isLive: isLive,
         isPlaying: playerStatus.isPlaying,
       );
+      return;
     }
+    _toast(capabilities.unsupportedReason('画中画', route));
+  }
+
+  /// Enters PiP automatically on the native path when the app is backgrounded.
+  ///
+  /// Called from the lifecycle handler instead of mpv's playing stream, which
+  /// never fires for AVPlayerLayer.
+  Future<void> _maybeAutoEnterPipOnBackground() async {
+    if (!_isAutoEnterPip || !_isCurrVideoPage || !_snapshot.playing) return;
+    await enterPip(autoEnter: true);
   }
 
   void _disableAutoEnterPip() {
@@ -962,7 +1007,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   void _onUserLeaveHint() {
     if (playerStatus.isPlaying && _isCurrVideoPage) {
-      enterPip();
+      enterPip(autoEnter: true);
     }
   }
 
@@ -1464,6 +1509,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       case AppLifecycleState.detached:
         _isForeground = false;
         _syncWakeLock();
+        await _maybeAutoEnterPipOnBackground();
         if (continuePlayInBackground.value) return;
         if (Platform.isIOS && IOSPipHelper.isActive) return;
         if (_snapshot.playing) {
@@ -2281,6 +2327,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _statusListeners.clear();
     _stopWakeLockTimer();
     _disableWakeLock();
+    _nativePip?.dispose();
+    _nativePip = null;
     if (kDebugMode) {
       debugPrint('dispose player');
     }
