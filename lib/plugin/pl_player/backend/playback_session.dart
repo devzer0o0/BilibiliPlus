@@ -19,7 +19,12 @@ class PlaybackSession {
 
   late final StreamController<PlaybackSnapshot> _events;
 
-  /// Current source generation. Incremented per source change, never per seek.
+  /// Current source generation, as assigned by the facade.
+  ///
+  /// The session never allocates one itself: two counters is how the first
+  /// native open ended up with generation 1 in the session and 2 in the
+  /// controller, which filtered every event as stale. [open] receives the
+  /// number the caller allocated and stamps everything with it.
   int _generation = 0;
   int get generation => _generation;
 
@@ -48,7 +53,11 @@ class PlaybackSession {
   /// The previous backend is disposed before the new one is opened: two
   /// players that both decode and both output audio is the bug being fixed,
   /// not a way to make switching feel faster.
-  Future<void> open(PlaybackBackend backend, PlaybackRequest request) async {
+  Future<void> open(
+    PlaybackBackend backend,
+    PlaybackRequest request, {
+    int? generation,
+  }) async {
     if (_disposed) return;
     final previous = _backend;
     await _subscription?.cancel();
@@ -58,7 +67,9 @@ class PlaybackSession {
       await previous.dispose();
     }
 
-    _generation += 1;
+    // The caller's generation wins when it supplies one; the fallback keeps
+    // direct session use (tests, tools) working.
+    _generation = generation ?? (_generation + 1);
     _kind = backend.kind;
     _backend = backend;
     _latest = PlaybackSnapshot(
@@ -79,6 +90,7 @@ class PlaybackSession {
   void _onEvent(PlaybackSnapshot event) {
     if (_disposed) return;
     // A stale backend, or one whose open raced a newer source, still emits.
+    // Dropped - never relabelled into the current generation.
     if (event.generation != 0 && event.generation != _generation) return;
     final merged = event.copyWith(
       generation: _generation,

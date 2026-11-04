@@ -14,6 +14,7 @@ if [ $# -lt 1 ]; then
   exit 2
 fi
 APP="$1"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FAIL=0
 note() { printf '  %s\n' "$1"; }
 bad()  { printf '  FAIL: %s\n' "$1"; FAIL=1; }
@@ -51,6 +52,30 @@ if [ -f "$AV" ]; then
   [ "$EXPORTS" = "359" ] \
     && note "exports = $EXPORTS" \
     || bad "exports = $EXPORTS, expected 359"
+
+  ARCHS=$(lipo -archs "$AV" 2>/dev/null)
+  case "$ARCHS" in
+    *arm64*) note "architectures: $ARCHS" ;;
+    *) bad "unexpected architectures '$ARCHS' (expected arm64 for device)" ;;
+  esac
+
+  # The binary must be the vendored one, not a rebuild with the same ABI and
+  # symbol count. `nm` counting is a shape check; the hash is an identity check.
+  VENDORED="$ROOT/ios/av1/Avcodec"
+  if [ -f "$VENDORED" ]; then
+    A=$(shasum -a 256 "$AV" | cut -d' ' -f1)
+    B=$(shasum -a 256 "$VENDORED" | cut -d' ' -f1)
+    if [ "$A" = "$B" ]; then
+      note "binary matches vendored ios/av1/Avcodec ($A)"
+    else
+      # A plain `flutter build ios` ships the pod's copy. Only
+      # tool/inject_ios_avcodec.sh puts the vendored AV1 build in place, so this
+      # is either a build that skipped injection or a different binary entirely.
+      bad "binary differs from the vendored Avcodec (app=$A vendored=$B) - run tool/inject_ios_avcodec.sh"
+    fi
+  else
+    bad "vendored ios/av1/Avcodec missing - cannot verify binary identity"
+  fi
 else
   bad "Avcodec.framework missing"
 fi
@@ -74,11 +99,15 @@ if [ -f "$DART" ]; then
       n=$(strings -a "$RUNNER" 2>/dev/null | grep -c "$kw")
       [ "$n" = "0" ] && note "native '$kw' absent" || bad "native '$kw' appears $n time(s)"
     done
-    # The trace hook itself may exist, but only behind an environment variable:
-    # it must not print unconditionally.
-    n=$(strings -a "$RUNNER" 2>/dev/null | grep -c 'PILIPLUS_HLS_TRACE')
-    [ "$n" -le 1 ] && note "native trace hook is env-gated" \
-      || bad "trace hook duplicated $n times"
+    # The trace hook must be compiled out of a shipping build, not merely
+    # env-gated: an environment variable is still settable on a release binary.
+    # Both trace entry points live behind PILIPLUS_DIAGNOSTICS, so their marker
+    # strings must be absent - a single occurrence means the call survived.
+    for kw in PILIPLUS_HLS_TRACE PILIPLUS_HDR_TRACE PILIPLUS_DIAGNOSTICS; do
+      n=$(strings -a "$RUNNER" 2>/dev/null | grep -c "$kw")
+      [ "$n" = "0" ] && note "trace marker '$kw' compiled out" \
+        || bad "trace marker '$kw' present $n time(s) - diagnostics leaked"
+    done
   else
     bad "no Runner binary - cannot scan native diagnostics"
   fi

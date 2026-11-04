@@ -4,6 +4,7 @@ import 'package:PiliPlus/models/common/video/video_decode_type.dart';
 import 'package:PiliPlus/models/video/play/url.dart'
     show AudioItem, VideoItem, FormatItem;
 import 'package:PiliPlus/models_new/live/live_room_play_info/codec.dart';
+import 'package:PiliPlus/plugin/pl_player/models/selected_rendition.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/hdr_support.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
@@ -315,6 +316,140 @@ abstract final class VideoUtils {
       if (best == null || q > best) best = q;
     }
     return best;
+  }
+
+  /// The single place a rendition is chosen, and it says what it chose.
+  ///
+  /// Stability first: the requested resolution is kept whenever *any* codec at
+  /// that resolution is playable, and the requested codec is only re-chosen
+  /// when it is not offered or not decodable. The returned record carries the
+  /// alternative's reason so the UI can explain a downgrade instead of silently
+  /// showing 1080P under a 4K request.
+  static SelectedRendition selectRendition({
+    required List<VideoItem> videoList,
+    required List<FormatItem> supportFormats,
+    required List<VideoDecodeFormatType> preferCodecs,
+    required int preferQuality,
+    List<int>? acceptQuality,
+    required bool allowTenBit,
+    required bool allowHdrRungs,
+  }) {
+    final available = <int>{for (final e in videoList) e.id};
+
+    // An HDR rung is kept only when the path can present it. This is decided on
+    // the *requested* id first: _findAvailableVideoQuality has already folded
+    // an HDR request down to an SDR one by the time it returns, which would
+    // erase the evidence that a downgrade happened at all.
+    RenditionFallback? fallback;
+    var requested = preferQuality;
+    if (!allowHdrRungs && hdrVideoQualities.contains(requested)) {
+      final sdr = _highestSupported(available.difference(hdrVideoQualities));
+      if (sdr != null) {
+        fallback = RenditionFallback(
+          reason: RenditionFallbackReason.hdrNotPresentable,
+          fromQuality: requested,
+          keptResolution:
+              _heightOf(videoList, sdr) == _heightOf(videoList, requested),
+        );
+        requested = sdr;
+      }
+    }
+
+    var targetQuality = _findAvailableVideoQuality(
+      videoList,
+      acceptQuality,
+      requested,
+    );
+
+    // Still an HDR id (the ladder only offers HDR): fall to any SDR rung rather
+    // than opening a 10-bit PQ track on an 8-bit surface.
+    if (!allowHdrRungs && hdrVideoQualities.contains(targetQuality)) {
+      final sdr = _highestSupported(
+        available.difference(hdrVideoQualities),
+      );
+      if (sdr != null) {
+        fallback = RenditionFallback(
+          reason: RenditionFallbackReason.hdrNotPresentable,
+          fromQuality: targetQuality,
+          keptResolution:
+              _heightOf(videoList, sdr) == _heightOf(videoList, targetQuality),
+        );
+        targetQuality = sdr;
+      }
+    }
+
+    final targetFormat = supportFormats.firstWhere(
+      (e) => e.quality == targetQuality,
+      orElse: () => supportFormats.first,
+    );
+    final targetDecode = selectCodec(targetFormat.codecs!, preferCodecs);
+
+    final variants = videoList.where((e) => e.id == targetQuality).toList();
+    final targetVideo = selectVideoVariant(
+      variants,
+      targetDecode,
+      allowTenBit: allowTenBit,
+    );
+
+    fallback ??= _explainVariant(
+      requestedQuality: preferQuality,
+      chosenQuality: targetVideo.id,
+      variants: variants,
+      chosen: targetVideo,
+      requestedDecode: targetDecode,
+    );
+
+    if (kDebugMode) {
+      debugPrint('QA_PICK prefer=$preferQuality picked=${targetVideo.id} '
+          'codec=${targetVideo.codecs} available=$available');
+    }
+
+    return SelectedRendition(
+      video: targetVideo,
+      format: targetFormat,
+      decode: targetDecode,
+      requestedQuality: preferQuality,
+      fallback: fallback,
+    );
+  }
+
+  static int? _heightOf(List<VideoItem> list, int quality) {
+    for (final e in list) {
+      if (e.id == quality) return e.height;
+    }
+    return null;
+  }
+
+  /// Why the chosen variant is not the one the preference asked for.
+  ///
+  /// Only reported when the *codec* changed. A different quality id is already
+  /// explained by [_findAvailableVideoQuality] and by the HDR gate above.
+  static RenditionFallback? _explainVariant({
+    required int requestedQuality,
+    required int chosenQuality,
+    required List<VideoItem> variants,
+    required VideoItem chosen,
+    required VideoDecodeFormatType requestedDecode,
+  }) {
+    if (variants.isEmpty) return null;
+    final wanted = variants.any(
+      (e) => requestedDecode.codes.any((c) => (e.codecs ?? '').startsWith(c)),
+    );
+    final gotWanted = requestedDecode.codes.any(
+      (c) => (chosen.codecs ?? '').startsWith(c),
+    );
+    if (gotWanted) return null;
+    if (!wanted && variants.length == 1) return null;
+    return RenditionFallback(
+      reason: wanted
+          ? RenditionFallbackReason.codecUnsupported
+          : RenditionFallbackReason.codecNotOffered,
+      fromQuality: requestedQuality,
+      keptResolution: chosenQuality == chosen.id,
+      detail: wanted
+          ? '首选编码不可用，已切换同分辨率编码'
+          : '该编码未提供，已切换同分辨率编码',
+    );
   }
 
   static (

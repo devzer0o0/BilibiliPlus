@@ -61,7 +61,6 @@ import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/feed_back.dart';
 import 'package:PiliPlus/utils/image_utils.dart';
-import 'package:PiliPlus/utils/ios/pip_helper.dart';
 import 'package:PiliPlus/utils/mobile_observer.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
@@ -160,7 +159,8 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
   GestureType? _gestureType;
   Offset? _initialFocalPoint;
 
-  bool _pauseDueToPauseUponEnteringBackgroundMode = false;
+  // Background pause/resume intent moved to PlPlayerController.handleAppLifecycle:
+  // the flag belongs with the wake-lock policy, not with this widget.
 
   StreamSubscription? _brightnessListener;
   void _onBrightnessChanged(double value) {
@@ -352,22 +352,10 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Keep playing in the PiP window.
-    if (Platform.isIOS && IOSPipHelper.isActive) return;
-    if (!plPlayerController.continuePlayInBackground.value) {
-      late final player = plPlayerController.videoPlayerController;
-      if (const <AppLifecycleState>[.paused, .detached].contains(state)) {
-        if (player != null && player.state.playing) {
-          _pauseDueToPauseUponEnteringBackgroundMode = true;
-          player.pause();
-        }
-      } else {
-        if (_pauseDueToPauseUponEnteringBackgroundMode) {
-          _pauseDueToPauseUponEnteringBackgroundMode = false;
-          player?.play();
-        }
-      }
-    }
+    // One policy for both backends, owned by the controller: mpv has a playing
+    // stream to hang this off, AVPlayerLayer does not, and reaching into mpv
+    // from here skipped the native path entirely.
+    plPlayerController.handleAppLifecycle(state);
   }
 
   Future<void> setBrightness(double value) async {
@@ -522,7 +510,11 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                       height: 35,
                       padding: const EdgeInsets.only(left: 30),
                       value: type,
-                      onTap: () => plPlayerController.setShader(type),
+                      onTap: () async {
+                        // The controller checks the active backend first and
+                        // only records a change it actually applied.
+                        await plPlayerController.setShader(type);
+                      },
                       child: Text(
                         type.label,
                         style: const TextStyle(

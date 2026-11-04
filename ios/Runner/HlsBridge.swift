@@ -46,6 +46,12 @@ final class HlsBridge {
 
   private var listener: NWListener?
   private var connections: [ObjectIdentifier: NWConnection] = [:]
+  /// Upstream requests belonging to this bridge, so stop() really stops them.
+  ///
+  /// Cancelling the listener and its connections alone left the ranged GETs
+  /// running: a source the user had switched away from kept downloading, and
+  /// their late callbacks could still write into a connection that was gone.
+  private var upstreamTasks: [ObjectIdentifier: URLSessionDataTask] = [:]
   private let queue = DispatchQueue(label: "pilipilus.hlsbridge")
 
   init(video: Track, audio: Track?, token: String = UUID().uuidString) {
@@ -79,6 +85,21 @@ final class HlsBridge {
     return lines.joined(separator: "\n")
   }
 
+  /// A declared bitrate when the service did not send one.
+  ///
+  /// `BANDWIDTH=1` is not a lie AVFoundation can work with: it is used for
+  /// variant ranking and for the buffer target, so a one-bit bitrate makes the
+  /// player expect the whole track to be free. Derived from the index rather
+  /// than invented: bytes actually referenced, over the duration they cover.
+  static func fallbackBandwidth(_ track: Track) -> Int {
+    guard let index = track.index, index.timescale > 0 else { return 1 }
+    let bytes = index.references.reduce(0) { $0 + $1.referencedSize }
+    let seconds = Double(index.references.reduce(0) { $0 + $1.subsegmentDuration })
+      / Double(index.timescale)
+    guard bytes > 0, seconds > 0 else { return 1 }
+    return max(1, Int(Double(bytes) * 8.0 / seconds))
+  }
+
   static func targetDuration(_ index: SegmentIndex) -> Int {
     let longest = index.references
       .map { Double($0.subsegmentDuration) / Double(max(index.timescale, 1)) }
@@ -98,7 +119,7 @@ final class HlsBridge {
       )
     }
     var attributes = [
-      "BANDWIDTH=\(max(video.bandwidth, 1))",
+      "BANDWIDTH=\(max(video.bandwidth, Self.fallbackBandwidth(video)))",
       "CODECS=\"\(video.codecs)\"",
     ]
     if let width = video.width, let height = video.height, width > 0, height > 0 {
@@ -157,7 +178,13 @@ final class HlsBridge {
     listener = nil
     for connection in connections.values { connection.cancel() }
     connections.removeAll()
+    for task in upstreamTasks.values { task.cancel() }
+    upstreamTasks.removeAll()
+    stopped = true
   }
+
+  /// Set by stop(); callbacks that arrive afterwards must not send anything.
+  private var stopped = false
 
   private func accept(_ connection: NWConnection) {
     let key = ObjectIdentifier(connection)
@@ -240,11 +267,25 @@ final class HlsBridge {
   /// route are recorded - never URLs, headers or credentials - and only when
   /// `PILIPLUS_HLS_TRACE` is set in the scheme.
   static func trace(_ line: String) {
+    #if PILIPLUS_DIAGNOSTICS
     guard ProcessInfo.processInfo.environment["PILIPLUS_HLS_TRACE"] == "1" else {
       return
     }
+    // Bounded twice: a hard total, and a rate limit so a burst of segment
+    // requests cannot turn logging into the reason playback stutters.
+    traceCount += 1
+    guard traceCount <= 500 else { return }
+    let now = CACurrentMediaTime()
+    if now - lastTrace < 0.02, traceCount > 1 { return }
+    lastTrace = now
     NSLog("[hls] %@", line)
+    #endif
   }
+
+  #if PILIPLUS_DIAGNOSTICS
+  private static var traceCount = 0
+  private static var lastTrace: CFTimeInterval = 0
+  #endif
 
   private func sendM3U8(_ text: String, on connection: NWConnection) {
     let body = Data(text.utf8)
@@ -299,8 +340,12 @@ final class HlsBridge {
     }
     request.timeoutInterval = 60
     let expected = range.upperBound - range.lowerBound + 1
-    URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-      guard let self else { return }
+    var task: URLSessionDataTask?
+    task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+      guard let self, !self.stopped else { return }
+      if let finished = task {
+        self.queue.async { self.upstreamTasks.removeValue(forKey: ObjectIdentifier(finished)) }
+      }
       if let http = response as? HTTPURLResponse, http.statusCode != 206 {
         // A 200 means the server ignored Range and sent the whole track.
         // Appending it as if it were this fragment would corrupt every offset
@@ -339,7 +384,11 @@ final class HlsBridge {
         body: data,
         on: connection
       )
-    }.resume()
+    }
+    if let task {
+      queue.async { self.upstreamTasks[ObjectIdentifier(task)] = task }
+      task.resume()
+    }
   }
 
   private func send(

@@ -484,9 +484,11 @@ class HeaderControlState extends State<HeaderControl>
                   itemBuilder: (_) => enumItemBuilder(
                     SuperResolutionType.values,
                   ),
-                  onSelected: (value, setState) {
-                    plPlayerController.setShader(value);
-                    setState();
+                  onSelected: (value, setState) async {
+                    // Persist and display only what the active backend really
+                    // accepted; on the native path this is a refusal.
+                    final applied = await plPlayerController.setShader(value);
+                    if (applied) setState();
                   },
                   descPosType: .subtitle,
                   descStyle: subTitleStyle,
@@ -581,20 +583,13 @@ class HeaderControlState extends State<HeaderControl>
                                 plPlayerController.onlyPlayAudio.value;
                             return ActionRowLineItem(
                               iconData: Icons.headphones,
-                              onTap: () {
-                                plPlayerController.onlyPlayAudio.value =
-                                    !onlyPlayAudio;
-                                final player =
-                                    plPlayerController.videoPlayerController!;
-                                if (onlyPlayAudio &&
-                                    player.state.tracks.video.length <= 2) {
-                                  videoDetailCtr.playerInit();
-                                } else {
-                                  player.setProperty(
-                                    'file-local-options/vid',
-                                    onlyPlayAudio ? 'auto' : 'no',
-                                  );
-                                }
+                              onTap: () async {
+                                // One entry point, and it refuses on the
+                                // native path instead of force-unwrapping a
+                                // player that does not exist.
+                                await plPlayerController.setAudioOnly(
+                                  !onlyPlayAudio,
+                                );
                               },
                               text: " 听视频 ",
                               selectStatus: onlyPlayAudio,

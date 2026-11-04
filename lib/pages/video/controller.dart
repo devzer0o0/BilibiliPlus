@@ -26,6 +26,7 @@ import 'package:PiliPlus/models/common/video/source_type.dart';
 import 'package:PiliPlus/models/common/video/video_decode_type.dart';
 import 'package:PiliPlus/models/common/video/video_type.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
+import 'package:PiliPlus/plugin/pl_player/models/selected_rendition.dart';
 import 'package:PiliPlus/models_new/download/bili_download_entry_info.dart';
 import 'package:PiliPlus/models_new/media_list/media_list.dart';
 import 'package:PiliPlus/models_new/pgc/pgc_info_model/result.dart';
@@ -149,13 +150,20 @@ class VideoDetailController extends GetxController
   /// honestly whether the picture is HDR.
   final Rxn<HdrPlaybackInfo> hdrPlaybackInfo = Rxn<HdrPlaybackInfo>();
 
+  /// Why the last selection is not exactly what was asked for, or null.
+  ///
+  /// Shown once per switch. A silent downgrade is the failure mode this exists
+  /// to prevent: "requested 4K, got 1080P" must have a sentence attached.
+  final Rxn<RenditionFallback> lastRenditionFallback =
+      Rxn<RenditionFallback>();
+
   /// Identity of the rendition the native session was opened with. Rotation,
   /// full screen and layout changes must not alter it, or they would restart
   /// the stream.
   String get nativeSourceKey {
     final video = firstVideoOrNull;
     if (video == null) return '';
-    return '${bvid}:${cid.value}:${video.id}:${video.codecs}';
+    return '$bvid:${cid.value}:${video.id}:${video.codecs}';
   }
 
   VideoItem? get firstVideoOrNull {
@@ -749,12 +757,77 @@ class VideoDetailController extends GetxController
     return bestVideo ?? videoList.first;
   }
 
+  /// Builds the one request the player opens for the current selection.
+  ///
+  /// Every entry point that changes media - a quality pick, a codec change, an
+  /// audio quality change, a retry - goes through here, so the mpv URL and the
+  /// native description can never be built from different renditions. It used
+  /// to be possible to point `videoUrl` at the new quality while `nativeHdrUrl`
+  /// still carried the old one.
+  ///
+  /// The position and the play/pause intent come from the caller, because only
+  /// the caller knows whether this is a live switch (keep playing) or a
+  /// re-preparation (stay paused).
+  PlaybackRequest buildPlaybackRequest({
+    required VideoItem video,
+    AudioItem? audio,
+    required Duration? startPosition,
+    required bool autoPlay,
+    required double rate,
+    required String sourceKey,
+    bool likeUserPaused = false,
+  }) {
+    final videoUrl = VideoUtils.getCdnUrl(video.playUrls);
+    final audioUrl = audio == null
+        ? ''
+        : VideoUtils.getCdnUrl(audio.playUrls, isAudio: true);
+    return PlaybackRequest(
+      sourceKey: sourceKey,
+      videoUrl: videoUrl,
+      audioUrl: audioUrl.isEmpty ? null : audioUrl,
+      videoSegmentBase: SegmentBaseRange.fromJson(video.segmentBase),
+      audioSegmentBase: SegmentBaseRange.fromJson(audio?.segmentBase),
+      videoCodecs: video.codecs,
+      audioCodecs: audio?.codecs,
+      width: video.width,
+      height: video.height,
+      frameRate: video.frameRate,
+      startPosition: startPosition,
+      autoPlay: autoPlay,
+      rate: rate,
+      isLive: false,
+    );
+  }
+
+  /// The rendition fields the native path needs, kept in one place so the
+  /// surface and the session cannot disagree with [buildPlaybackRequest].
+  void _publishNativeSelection(
+    PlaybackRequest request, {
+    required bool tenBit,
+  }) {
+    final native = tenBit && HdrSupport.nativeHdrPath;
+    nativeHdrUrl.value = native ? request.videoUrl : null;
+    nativeHdrAudioUrl.value = native ? request.audioUrl : null;
+    nativeHdrVideoRange = request.videoSegmentBase;
+    nativeHdrAudioRange = request.audioSegmentBase;
+    nativeVideoCodecs = request.videoCodecs;
+    nativeAudioCodecs = request.audioCodecs;
+    nativeWidth = request.width;
+    nativeHeight = request.height;
+    nativeFrameRate = request.frameRate;
+  }
+
   /// 更新画质、音质
-  void updatePlayer() {
+  ///
+  /// The previous behaviour lost two things on every switch: the position came
+  /// from mpv's state (absent on the native path, so it seeked to 0) and
+  /// autoplay was forced on (a paused player started playing). Both are now
+  /// taken from the shared snapshot and the user's intent.
+  Future<void> updatePlayer() async {
     final currentVideoQa = this.currentVideoQa.value;
     if (currentVideoQa == null) return;
-    _autoPlay.value = true;
-    playedTime = plPlayerController.videoPlayerController?.state.position;
+    final wasPlaying = plPlayerController.snapshot.playing;
+    playedTime = plPlayerController.snapshot.position;
     plPlayerController
       ..isBuffering.value = false
       ..buffered.value = 0;
@@ -763,15 +836,31 @@ class VideoDetailController extends GetxController
     videoUrl = VideoUtils.getCdnUrl(firstVideo.playUrls);
 
     /// 根据currentAudioQa 重新设置audioUrl
+    AudioItem? firstAudio;
     if (currentAudioQa != null) {
-      final firstAudio = data.dash!.audio!.firstWhere(
+      firstAudio = data.dash!.audio!.firstWhere(
         (i) => i.id == currentAudioQa!.code,
         orElse: () => data.dash!.audio!.first,
       );
       audioUrl = VideoUtils.getCdnUrl(firstAudio.playUrls, isAudio: true);
     }
 
-    playerInit();
+    // Rebuild the native description too; changing quality on the native path
+    // used to leave AVPlayer on the previous rendition.
+    final request = buildPlaybackRequest(
+      video: firstVideo,
+      audio: firstAudio,
+      startPosition: playedTime,
+      autoPlay: wasPlaying,
+      rate: plPlayerController.playbackSpeed,
+      sourceKey: nativeSourceKey,
+    );
+    _publishNativeSelection(
+      request,
+      tenBit: VideoUtils.isTenBitCodec(firstVideo.codecs),
+    );
+
+    await playerInit(autoplay: wasPlaying);
   }
 
   Future<void>? initPlayerIfNeeded(bool autoFullScreenFlag) {
@@ -934,6 +1023,7 @@ class VideoDetailController extends GetxController
     nativeHeight = null;
     nativeFrameRate = null;
     hdrPlaybackInfo.value = null;
+    lastRenditionFallback.value = null;
     try {
       await _queryVideoUrl(fromReset, autoFullScreenFlag);
     } catch (e, s) {
@@ -1055,40 +1145,24 @@ class VideoDetailController extends GetxController
       }
 
       final cacheVideoQa = plPlayerController.cacheVideoQa!;
-      final (
-        int targetQuality,
-        FormatItem targetFormat,
-        VideoDecodeFormatType targetDecode,
-        VideoItem targetVideo,
-      ) = VideoUtils.findTargetVideo(
-        dash.video!,
-        cacheVideoQa,
-        response.acceptQuality,
-        response.supportFormats!,
-        preferCodecs,
+      // The selection states what it chose and why, so the player info panel
+      // reads the rendition that is actually playing instead of the qn that was
+      // requested. Resolution is preserved on every fallback that can keep it.
+      final selected = VideoUtils.selectRendition(
+        videoList: dash.video!,
+        supportFormats: response.supportFormats!,
+        preferCodecs: preferCodecs,
+        preferQuality: cacheVideoQa,
+        acceptQuality: response.acceptQuality,
+        allowTenBit: HdrSupport.allowsHdrQuality,
+        allowHdrRungs: await _hdrRouteAvailable,
       );
-      firstVideo = targetVideo;
-      currentDecodeFormats = targetDecode;
-      currentVideoQa.value = VideoQuality.fromCode(targetQuality);
+      lastRenditionFallback.value = selected.fallback;
+      firstVideo = selected.video;
+      currentDecodeFormats = selected.decode;
+      currentVideoQa.value = VideoQuality.fromCode(selected.video.id);
       _setVideoHeight();
       videoUrl = VideoUtils.getCdnUrl(firstVideo.playUrls);
-
-      // An HDR rendition cannot be drawn through the 8-bit Flutter texture, so
-      // the page hands it to AVPlayerLayer instead of mpv. Recorded here, where
-      // the chosen rendition's codec is known.
-        // A ten-bit rendition is only handed to AVPlayerLayer when this device can
-      // actually present extended range; otherwise every alternate is filtered
-      // out as unplayable and the item never becomes ready.
-      nativeHdrUrl.value =
-          VideoUtils.isTenBitCodec(firstVideo.codecs) && await _hdrRouteAvailable
-          ? videoUrl
-          : null;
-      nativeHdrAudioUrl.value = nativeHdrUrl.value == null ? null : audioUrl;
-      nativeHdrVideoRange = SegmentBaseRange.fromJson(firstVideo.segmentBase);
-      nativeVideoCodecs = firstVideo.codecs;
-      nativeWidth = firstVideo.width;
-      nativeHeight = firstVideo.height;
-      nativeFrameRate = firstVideo.frameRate;
 
       AudioItem? firstAudio;
       final audioList = dash.audio;
@@ -1102,10 +1176,25 @@ class VideoDetailController extends GetxController
       } else {
         audioUrl = '';
       }
-      if (nativeHdrUrl.value != null) {
-        nativeHdrAudioUrl.value = audioUrl;
-        nativeHdrAudioRange = SegmentBaseRange.fromJson(firstAudio?.segmentBase);
-        nativeAudioCodecs = firstAudio?.codecs;
+
+      // The same builder the quality switch uses, so the URL the page shows and
+      // the URL the native session opens cannot diverge.
+      final request = buildPlaybackRequest(
+        video: firstVideo,
+        audio: firstAudio,
+        startPosition: null,
+        autoPlay: true,
+        rate: plPlayerController.playbackSpeed,
+        sourceKey: nativeSourceKey,
+      );
+      // A ten-bit rendition is only handed to AVPlayerLayer when this device can
+      // actually present extended range; otherwise every alternate is filtered
+      // out as unplayable and the item never becomes ready.
+      final tenBit = VideoUtils.isTenBitCodec(firstVideo.codecs);
+      _publishNativeSelection(request, tenBit: tenBit);
+      if (tenBit && !await _hdrRouteAvailable) {
+        nativeHdrUrl.value = null;
+        nativeHdrAudioUrl.value = null;
       }
       await initPlayerIfNeeded(autoFullScreenFlag);
     } else {

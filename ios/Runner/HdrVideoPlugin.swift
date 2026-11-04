@@ -299,6 +299,10 @@ final class HdrVideoSession {
   ) {
     declaredVideoBase = videoRange
     declaredAudioBase = audioRange
+    // The replacement rendition's codec/size/rate must be what the new master
+    // playlist declares. Leaving `media` alone meant a codec switch kept the
+    // old sample-entry description and AVFoundation failed after fragment one.
+    self.media = media
     desiredPlaying = autoPlay
     desiredRate = rate
     pendingSeekMs = startMs > 0 ? startMs : nil
@@ -311,41 +315,99 @@ final class HdrVideoSession {
   private func open(videoUrl: URL, audioUrl: URL?) {
     bridge?.stop()
     bridge = nil
+    cancelPreparation()
+
     // The track's own index says where the initialization segment ends and how
     // long each fragment is. Guessing either (the old loader did) shifted every
     // later fragment by the error.
+    //
+    // Everything below is asynchronous and cancellable. It used to block on a
+    // DispatchSemaphore while the platform channel call that started it was
+    // still on the main thread, so a slow index response froze the UI for up to
+    // twenty seconds per track.
+    let generation = beginPreparation()
     readSegmentBase(videoUrl, declared: declaredVideoBase) { [weak self] videoBase in
-      guard let self, !self.disposed else { return }
-      guard let videoBase,
-            let videoTrack = self.makeTrack(url: videoUrl, base: videoBase, isAudio: false)
-      else {
+      guard let self, self.isCurrent(generation) else { return }
+      guard let videoBase else {
         self.fail("no-index")
         return
       }
-      guard let audioUrl else {
-        self.startBridge(video: videoTrack, audio: nil)
-        return
-      }
-      self.readSegmentBase(audioUrl, declared: self.declaredAudioBase) { audioBase in
-        guard let audioBase,
-              let track = self.makeTrack(url: audioUrl, base: audioBase, isAudio: true)
+      self.fetchIndex(videoUrl, videoBase) { [weak self] index in
+        guard let self, self.isCurrent(generation) else { return }
+        guard let index,
+              let videoTrack = self.makeTrack(
+                url: videoUrl, base: videoBase, index: index, isAudio: false
+              )
         else {
-          self.audioNote = "unsupported"
+          self.fail("no-index")
+          return
+        }
+        guard let audioUrl else {
           self.startBridge(video: videoTrack, audio: nil)
           return
         }
-        self.audioNote = "grouped"
-        self.startBridge(video: videoTrack, audio: track)
+        self.readSegmentBase(audioUrl, declared: self.declaredAudioBase) {
+          [weak self] audioBase in
+          guard let self, self.isCurrent(generation) else { return }
+          guard let audioBase else {
+            self.audioNote = "unsupported"
+            self.startBridge(video: videoTrack, audio: nil)
+            return
+          }
+          self.fetchIndex(audioUrl, audioBase) { [weak self] audioIndex in
+            guard let self, self.isCurrent(generation) else { return }
+            guard let audioIndex,
+                  let track = self.makeTrack(
+                    url: audioUrl, base: audioBase, index: audioIndex, isAudio: true
+                  )
+            else {
+              self.audioNote = "unsupported"
+              self.startBridge(video: videoTrack, audio: nil)
+              return
+            }
+            self.audioNote = "grouped"
+            self.startBridge(video: videoTrack, audio: track)
+          }
+        }
       }
     }
+  }
+
+  // MARK: - Preparation cancellation
+
+  private var preparationGeneration = 0
+  private var preparationTasks: Set<URLSessionDataTask> = []
+
+  private func beginPreparation() -> Int {
+    preparationGeneration &+= 1
+    return preparationGeneration
+  }
+
+  private func isCurrent(_ generation: Int) -> Bool {
+    !disposed && generation == preparationGeneration
+  }
+
+  /// Drops every in-flight preparation request and invalidates its callbacks.
+  func cancelPreparation() {
+    preparationGeneration &+= 1
+    for task in preparationTasks { task.cancel() }
+    preparationTasks.removeAll()
+  }
+
+  private func track(_ task: URLSessionDataTask) {
+    preparationTasks.insert(task)
+  }
+
+  private func untrack(_ task: URLSessionDataTask) {
+    preparationTasks.remove(task)
   }
 
   private func makeTrack(
     url: URL,
     base: DashSegmentBase,
+    index: SegmentIndex,
     isAudio: Bool
   ) -> HlsBridge.Track? {
-    guard let index = fetchIndex(url, base) else { return nil }
     // The codec string must match the sample entry in the init segment. A
     // hardcoded "hvc1…" beside an AVC track parses as a playlist and then fails
     // the item after the first fragment.
@@ -365,18 +427,36 @@ final class HdrVideoSession {
     )
   }
 
-  private func fetchIndex(_ url: URL, _ base: DashSegmentBase) -> SegmentIndex? {
+  /// Reads and parses the sidx without blocking any thread.
+  ///
+  /// The old version waited on a DispatchSemaphore with a 20 second timeout.
+  /// It was called from the platform-channel handler on the main thread, so a
+  /// slow index response froze the UI instead of merely delaying playback.
+  private func fetchIndex(
+    _ url: URL,
+    _ base: DashSegmentBase,
+    completion: @escaping (SegmentIndex?) -> Void
+  ) {
     let request = Self.rangedRequest(url, base.indexRange)
-    var index: SegmentIndex?
-    let done = DispatchSemaphore(value: 0)
-    URLSession.shared.dataTask(with: request) { data, _, _ in
-      if let data, !data.isEmpty, let parsed = try? SidxParser.parse(data) {
-        index = parsed
+    var task: URLSessionDataTask?
+    task = URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+      if let self, let finished = task { self.untrack(finished) }
+      if error != nil {
+        completion(nil)
+        return
       }
-      done.signal()
-    }.resume()
-    guard done.wait(timeout: .now() + 20) == .success else { return nil }
-    return index
+      guard let data, !data.isEmpty, let parsed = try? SidxParser.parse(data) else {
+        completion(nil)
+        return
+      }
+      completion(parsed)
+    }
+    if let task {
+      track(task)
+      task.resume()
+    } else {
+      completion(nil)
+    }
   }
 
   /// The ranges the playurl response already declared, when the caller had them.
@@ -397,13 +477,21 @@ final class HdrVideoSession {
     // ftyp + moov + sidx live at the front of the track; one ranged read of the
     // first 8 KiB finds where each box ends.
     let request = Self.rangedRequest(url, 0...8191)
-    URLSession.shared.dataTask(with: request) { data, _, _ in
-      guard let data, !data.isEmpty else {
+    var task: URLSessionDataTask?
+    task = URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+      if let self, let finished = task { self.untrack(finished) }
+      guard error == nil, let data, !data.isEmpty else {
         completion(nil)
         return
       }
       completion(HdrVideoSession.discoverSegmentBase(in: data))
-    }.resume()
+    }
+    if let task {
+      track(task)
+      task.resume()
+    } else {
+      completion(nil)
+    }
   }
 
   /// Reads the segment base out of the file head.
@@ -562,6 +650,7 @@ final class HdrVideoSession {
   func stop() {
     if disposed { return }
     disposed = true
+    cancelPreparation()
     statusObserver?.invalidate()
     statusObserver = nil
     if let timeObserver {
@@ -642,11 +731,17 @@ final class HdrVideoSession {
   /// write files, so the trace is an opt-in environment variable and nothing
   /// else: no URLs, no credentials, and at most 200 lines per run.
   private func traceDescription(_ fields: [String: Any]) {
+    // Compile-time gate AND runtime opt-in. Release builds do not contain the
+    // call at all, so setting the environment variable there cannot re-enable
+    // it; profile/debug still need the variable because the trace is a test
+    // tool, not a product feature.
+    #if PILIPLUS_DIAGNOSTICS
     guard ProcessInfo.processInfo.environment["PILIPLUS_HDR_TRACE"] == "1",
           HdrVideoSession.traceWritten < 200
     else { return }
     HdrVideoSession.traceWritten += 1
     NSLog("[hdr] %@", "\(fields)")
+    #endif
   }
 
   /// What the platform is actually presenting.
@@ -730,30 +825,57 @@ final class HdrVideoViewFactory: NSObject, FlutterPlatformViewFactory {
 /// the controller before any surface exists, and a surface can be destroyed and
 /// recreated (rotation, full screen) without touching playback.
 enum HdrVideoViewRegistry {
-  static var views: [Int64: HdrVideoPlatformView] = [:]
+  /// Weak, because a registry that owns its views keeps them alive forever:
+  /// the platform view's deinit is what would remove the entry, and a strong
+  /// reference is exactly what prevents that deinit from ever running.
+  private static var views: [Int64: WeakView] = [:]
+
+  final class WeakView {
+    weak var value: HdrVideoPlatformView?
+    init(_ value: HdrVideoPlatformView) { self.value = value }
+  }
+
+  /// Live views, with dead entries swept on every access.
+  static var liveViews: [HdrVideoPlatformView] {
+    views = views.filter { $0.value.value != nil }
+    return views.values.compactMap { $0.value }
+  }
 
   static func register(_ view: HdrVideoPlatformView, viewId: Int64) {
-    views[viewId] = view
+    views = views.filter { $0.value.value != nil }
+    views[viewId] = WeakView(view)
+  }
+
+  /// Explicit removal. Deinit is not enough on its own: a view can be detached
+  /// from its window without being deallocated immediately, and a stale entry
+  /// would keep answering commands for a session nobody is displaying.
+  static func unregister(viewId: Int64) {
+    views.removeValue(forKey: viewId)
   }
 
   static func attachPending(_ session: HdrVideoSession) {
-    for view in views.values where view.pendingSessionId == session.sessionId {
+    for view in liveViews where view.pendingSessionId == session.sessionId {
       view.attach(session)
     }
   }
 
   static func detachSession(_ sessionId: String) {
-    for view in views.values where view.attachedSessionId == sessionId {
+    for view in liveViews where view.attachedSessionId == sessionId {
       view.detach()
     }
   }
 
   /// The session a platform view is currently showing, if any.
   static func session(forViewId viewId: Int) -> HdrVideoSession? {
-    guard let attached = views[Int64(viewId)]?.attachedSessionId else {
+    guard let attached = views[Int64(viewId)]?.value?.attachedSessionId else {
       return nil
     }
     return HdrVideoPlugin.sessions[attached]
+  }
+
+  static var count: Int {
+    views = views.filter { $0.value.value != nil }
+    return views.count
   }
 }
 
@@ -796,7 +918,7 @@ final class HdrVideoPlatformView: NSObject, FlutterPlatformView {
 
   func attach(_ session: HdrVideoSession) {
     if attachedSessionId == session.sessionId { return }
-    container.playerLayer?.removeFromSuperlayer()
+    detachLayer()
     session.layer.frame = container.bounds
     container.playerLayer = session.layer
     container.layer.addSublayer(session.layer)
@@ -804,9 +926,26 @@ final class HdrVideoPlatformView: NSObject, FlutterPlatformView {
   }
 
   func detach() {
-    container.playerLayer?.removeFromSuperlayer()
-    container.playerLayer = nil
+    detachLayer()
     attachedSessionId = nil
+  }
+
+  /// Removes the layer only when this container really owns it.
+  ///
+  /// Unbinding an old view used to call `removeFromSuperlayer` on whatever
+  /// layer field it held, including one a newer view had already adopted - the
+  /// picture then vanished from the new surface with no error anywhere.
+  private func detachLayer() {
+    guard let layer = container.playerLayer else { return }
+    if layer.superlayer === container.layer {
+      layer.removeFromSuperlayer()
+    }
+    container.playerLayer = nil
+  }
+
+  deinit {
+    HdrVideoViewRegistry.unregister(viewId: viewId)
+    detachLayer()
   }
 
   func view() -> UIView { container }

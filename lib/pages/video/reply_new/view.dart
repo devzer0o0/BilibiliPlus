@@ -335,25 +335,26 @@ class _ReplyPageState extends CommonRichTextPubPageState<ReplyPage> {
                     return;
                   }
                   try {
-                    final plPlayerController = Get.find<VideoDetailController>(
+                    final detailCtr = Get.find<VideoDetailController>(
                       tag: heroTag,
                     );
-                    final res = await plPlayerController
-                        .plPlayerController
-                        .videoPlayerController
-                        ?.screenshot();
-                    if (res != null) {
-                      final png = await res.toByteData(format: .png);
-                      if (png != null) {
-                        final path =
-                            '$tmpDirPath/${Utils.generateRandomString(8)}.png';
-                        await File(path).writeAsBytes(png.buffer.asUint8List());
-                        imageList.add(FilePicModel(path: path));
-                      }
-                      res.dispose();
-                    } else {
-                      debugPrint('null screenshot');
+                    final ctr = detailCtr.plPlayerController;
+                    // Same capability gate as the full-screen button and the
+                    // S shortcut; the reply editor used to force-unwrap mpv.
+                    final frame = await ctr.captureFrame();
+                    if (frame == null) {
+                      SmartDialog.showToast(
+                        ctr.capabilities.unsupportedReason(
+                          '视频截图',
+                          ctr.route,
+                        ),
+                      );
+                      return;
                     }
+                    final path =
+                        '$tmpDirPath/${Utils.generateRandomString(8)}.png';
+                    await File(path).writeAsBytes(frame.png);
+                    imageList.add(FilePicModel(path: path));
                   } catch (e) {
                     debugPrint(e.toString());
                   }

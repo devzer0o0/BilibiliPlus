@@ -33,6 +33,10 @@ expect_exit 2 "verify_release_constraints rejects a missing path" \
   bash "$ROOT/tool/verify_release_constraints.sh"
 expect_exit 2 "hdr_regression rejects a missing bvid" \
   bash "$ROOT/tool/hdr_regression.sh"
+expect_exit 2 "identity rejects a missing app path" \
+  bash "$ROOT/tool/identity.sh"
+expect_exit 2 "ios_build rejects an unknown mode" \
+  env PILIPLUS_DEVELOPMENT_TEAM=ABCDE12345 bash "$ROOT/tool/ios_build.sh" nonsense
 
 echo "== reset_sim refuses a build with experiment markers =="
 TMPB=$(mktemp -d)
@@ -63,12 +67,18 @@ expect_exit 1 "a debug-style bundle fails the scan" \
 rm -rf "$TMP"
 
 echo "== a good release bundle passes =="
-APP="$ROOT/build/ios/iphoneos/Runner.app"
-if [ -d "$APP" ]; then
+# Only a bundle that is newer than the sources and carries the vendored AV1
+# binary can be called good. Scoring an older bundle as "passes" is exactly the
+# mistake this whole file exists to catch.
+APP="${PILIPLUS_APP:-$ROOT/build/ios/iphoneos/Runner.app}"
+if [ ! -d "$APP" ]; then
+  printf '  SKIP  no release bundle built\n'
+elif [ -n "$(find "$ROOT/lib" "$ROOT/ios/Runner" -newer "$APP" -type f \
+            \( -name '*.dart' -o -name '*.swift' \) -print -quit 2>/dev/null)" ]; then
+  printf '  SKIP  the bundle predates the current sources\n'
+else
   expect_exit 0 "the real release bundle passes" \
     bash "$ROOT/tool/verify_release_constraints.sh" "$APP"
-else
-  printf '  SKIP  no release bundle built\n'
 fi
 
 echo

@@ -35,8 +35,19 @@ else
 fi
 
 echo "== 2. release constraints =="
-APP=$ROOT/build/ios/iphoneos/Runner.app
+# The bundle is only "the build" if it is newer than the newest source file and
+# was produced after the current commit. A Runner.app left over from an earlier
+# pass used to be scored as if it were the code under test.
+APP=${PILIPLUS_APP:-$ROOT/build/ios/iphoneos/Runner.app}
 if [ -d "$APP" ]; then
+  NEWEST_SRC=$(find "$ROOT/lib" "$ROOT/ios/Runner" -newer "$APP" -type f \
+    \( -name '*.dart' -o -name '*.swift' \) -print -quit 2>/dev/null)
+  if [ -n "$NEWEST_SRC" ]; then
+    fail "the bundle is older than $(basename "$NEWEST_SRC") - rebuild, it is not this code"
+  else
+    pass "bundle is newer than every Dart/Swift source file"
+  fi
+  bash "$ROOT/tool/identity.sh" "$APP" | sed 's/^/  /'
   if bash "$ROOT/tool/verify_release_constraints.sh" "$APP" >/dev/null 2>&1; then
     pass "bundle id / AV1 ABI / no diagnostics"
   else
@@ -59,7 +70,7 @@ else
   fail "no release build - run 'flutter build ios --release --no-codesign' first"
 fi
 
-echo "== 3. HDR gate in the simulator =="
+echo "== 3. rendition selection (simulator logic, not device decode) =="
 check_pick() {
   local bvid=$1 qn=$2 tone=$3 expect=$4 label=$5
   local out
@@ -75,9 +86,12 @@ check_pick() {
 # range for real, so 125 is served whether or not the tone-mapping fallback is
 # enabled. The gate that used to matter was the 8-bit texture path; it no longer
 # applies, and asserting 120 here would be asserting the old behaviour.
-check_pick BV1b24y1w73N 125 0 125 "HDR served natively (tone mapping off)"
-check_pick BV1b24y1w73N 125 1 125 "HDR served natively (tone mapping on)"
-check_pick BV1b24y1w73N 120 0 120 "4K honoured with tone mapping off"
+# A pick here means "the selection function chose this id". It is NOT evidence
+# that HDR was presented, that 4K decoded, or that frames were rendered - those
+# are device checks (tool/device_preflight.sh + the D1/D2 records).
+check_pick BV1b24y1w73N 125 0 125 "selection: HDR rung reachable (not a render proof)"
+check_pick BV1b24y1w73N 125 1 125 "selection: HDR rung reachable with tone mapping on"
+check_pick BV1b24y1w73N 120 0 120 "selection: 4K rung honoured, no HDR drift"
 
 echo
 if [ "$FAIL" = "0" ]; then
