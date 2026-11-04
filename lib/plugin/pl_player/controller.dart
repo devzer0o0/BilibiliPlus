@@ -19,6 +19,7 @@ import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/models_new/video/video_shot/data.dart';
 import 'package:PiliPlus/pages/danmaku/danmaku_model.dart';
 import 'package:PiliPlus/pages/sponsor_block/block_mixin.dart';
+import 'package:PiliPlus/plugin/pl_player/backend/native_frame_capture.dart';
 import 'package:PiliPlus/plugin/pl_player/backend/native_pip.dart';
 import 'package:PiliPlus/plugin/pl_player/backend/native_session_host.dart';
 import 'package:PiliPlus/plugin/pl_player/backend/playback_route.dart';
@@ -2419,6 +2420,16 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   /// The caller owns the bytes only; the `ui.Image` is disposed here so the
   /// reply editor and the save dialog cannot leak a full-resolution buffer.
   Future<({Uint8List png, int width, int height})?> captureFrame() async {
+    // Native path: the frame comes from the running AVPlayerItem, never from a
+    // second download and never from a Flutter RepaintBoundary (which cannot
+    // see a platform view's contents).
+    if (route.isNative) {
+      final sessionId = _nativeHost?.openedSessionId;
+      if (sessionId == null || !capabilities.nativeScreenshot) return null;
+      final frame = await NativeFrameCapture.capture(sessionId);
+      if (frame == null) return null;
+      return (png: frame.png, width: frame.width, height: frame.height);
+    }
     if (!capabilities.screenshot) return null;
     final player = _videoPlayerController;
     if (player == null) return null;

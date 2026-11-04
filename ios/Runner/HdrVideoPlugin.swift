@@ -199,6 +199,8 @@ final class HdrVideoPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       case "pipStop":
         session.stopPip()
         result(nil)
+      case "captureFrame":
+        result(session.captureFrame())
       case "describe":
         result(session.describe())
       default:
@@ -275,6 +277,62 @@ final class HdrVideoSession: NSObject {
   /// Native PiP for this session, created lazily once the layer is attached.
   private var pip: AVPictureInPictureController?
   private var pipPossibleObservation: NSKeyValueObservation?
+
+  /// A frame extracted from the current item, encoded as SDR PNG.
+  ///
+  /// Uses `AVPlayerItemVideoOutput` - the public API that copies the item's
+  /// current pixel buffer without a second player and without disturbing the
+  /// layer. The result is tone mapped to SDR and tagged BT.709, so a PQ/HLG
+  /// frame does not end up stored as if its 10-bit code values were ordinary
+  /// 8-bit RGB.
+  ///
+  /// Returns nil when the item is not ready, when the buffer is not available
+  /// within a short bound, or when the content is protected.
+  func captureFrame() -> [String: Any]? {
+    guard ready, !disposed, let item = player.currentItem else { return nil }
+    guard item.status == .readyToPlay else { return nil }
+    guard item.asset.hasProtectedContent == false else {
+      return ["error": "protected"]
+    }
+    let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [
+      kCVPixelBufferPixelFormatTypeKey as String:
+        Int(kCVPixelFormatType_32BGRA),
+      kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+    ])
+    item.add(output)
+    defer { item.remove(output) }
+
+    let time = player.currentTime()
+    // A paused player has no new frame to hand over; copy the one on screen.
+    let target = player.timeControlStatus == .paused
+      ? CMTime(value: time.value, timescale: time.timescale)
+      : time
+    guard output.hasNewPixelBuffer(forItemTime: target) ||
+            player.timeControlStatus == .paused
+    else { return nil }
+    guard let buffer = output.copyPixelBuffer(
+      forItemTime: target,
+      itemTimeForDisplay: nil
+    ) else { return nil }
+
+    let ci = CIImage(cvPixelBuffer: buffer)
+    // Convert to sRGB with the source's own colour space: tone mapping happens
+    // here, not by reinterpreting PQ code values as gamma-encoded bytes.
+    let srgb = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+    let context = CIContext(options: [.workingColorSpace: srgb])
+    guard let cg = context.createCGImage(ci, from: ci.extent) else { return nil }
+    let image = UIImage(cgImage: cg)
+    guard let png = image.pngData() else { return nil }
+    return [
+      "png": FlutterStandardTypedData(bytes: png),
+      "width": Int(cg.width),
+      "height": Int(cg.height),
+      "frameMs": Int(CMTimeGetSeconds(time) * 1000),
+      "colorSpace": "sRGB",
+      "toneMapped": media.declaredVideoRange != nil
+        && media.declaredVideoRange != "SDR",
+    ]
+  }
 
   /// Whether the platform can offer PiP for this session at all.
   var pipAvailable: Bool {

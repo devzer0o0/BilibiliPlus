@@ -36,8 +36,18 @@ class PlaybackCapabilities {
   /// "screenshot silently returned the wrong frame".
   bool get screenshot => isMpv;
 
-  /// The native frame extractor, enabled once its verification passed.
-  bool get nativeScreenshot => false;
+  /// The native frame extractor (AVPlayerItemVideoOutput).
+  ///
+  /// Enabled: it reads the current item's pixel buffer through the public API,
+  /// so it neither re-downloads the media nor needs a second player. It is
+  /// still separate from [screenshot] because the two have different failure
+  /// modes and only one of them exists per backend.
+  bool get nativeScreenshot => route.isNative;
+
+  /// Animated WebP capture. It re-encodes through its own mpv instance, so it
+  /// is a different capability from either still-frame path and is not implied
+  /// by them.
+  bool get animatedScreenshot => isMpv;
 
   /// "Only play the audio" is a separate capability from choosing a track.
   bool get audioOnly => isMpv;

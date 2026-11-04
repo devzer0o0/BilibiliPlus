@@ -2104,6 +2104,13 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
   }
 
   Future<void> _screenshotWebp() async {
+    // Animated capture runs its own MpvConvertWebp encoder, so it is a separate
+    // capability from the still frame: the native path cannot offer it just
+    // because it can now take a screenshot.
+    if (!plPlayerController.capabilities.animatedScreenshot) {
+      SmartDialog.showToast('动态截图暂不支持当前播放路径');
+      return;
+    }
     final videoInfo = videoDetailController.data;
     final ids = videoInfo.dash!.video!.availableVideoQualities;
     final video = videoDetailController.findVideoByQa(ids.min);
@@ -2202,7 +2209,12 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
           ),
         ) ??
         false;
-    if (!success) return;
+    if (!success) {
+      // Cancelling the dialog used to return with the player still paused,
+      // leaving playback stopped for a screenshot the user never took.
+      if (isPlay) ctr.play();
+      return;
+    }
 
     final progress = 0.0.obs;
     final name =
