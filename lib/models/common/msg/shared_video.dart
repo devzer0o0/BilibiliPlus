@@ -22,6 +22,18 @@ class SharedVideo {
   final String cover;
   final int timestamp;
 
+  /// Returns a copy with the given fields replaced. Used to attach the real
+  /// title and cover once the video has been looked up, since a plain-text
+  /// share carries neither.
+  SharedVideo copyWith({String? title, String? cover}) => SharedVideo(
+    bvid: bvid,
+    title: title ?? this.title,
+    senderName: senderName,
+    senderId: senderId,
+    cover: cover ?? this.cover,
+    timestamp: timestamp,
+  );
+
   @override
   bool operator ==(Object other) =>
       other is SharedVideo && other.bvid == bvid && other.senderId == senderId;
