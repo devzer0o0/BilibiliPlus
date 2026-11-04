@@ -29,19 +29,21 @@ class PlayOrPauseButton extends StatelessWidget {
           }
         },
         child: Center(
-          child: Obx(
-            () => AnimatedIcon(
-              semanticLabel: plPlayerController.playerStatus.isPlaying
-                  ? '暂停'
-                  : '播放',
-              progress: AlwaysStoppedAnimation<double>(
-                plPlayerController.playerStatus.isPlaying ? 1 : 0,
-              ),
+          // The status is read inside the Obx, and it is now an observable
+          // (PlPlayerController.playerStatus is backed by an Rx). Reading a
+          // plain field here made the dependency list empty: GetX logged
+          // "improper use of a GetX", the build threw, and the button was drawn
+          // as a 42x34 grey error box instead of an icon.
+          child: Obx(() {
+            final playing = plPlayerController.playerStatus.isPlaying;
+            return AnimatedIcon(
+              semanticLabel: playing ? '暂停' : '播放',
+              progress: AlwaysStoppedAnimation<double>(playing ? 1 : 0),
               icon: AnimatedIcons.play_pause,
               color: Colors.white,
               size: 20,
-            ),
-          ),
+            );
+          }),
         ),
       ),
     );
