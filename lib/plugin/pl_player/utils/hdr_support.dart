@@ -1,6 +1,6 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show immutable;
+import 'package:flutter/foundation.dart' show debugPrint, immutable, kDebugMode;
 import 'package:flutter/services.dart' show MethodChannel;
 
 import 'package:PiliPlus/utils/platform_utils.dart';
@@ -114,13 +114,27 @@ abstract final class HdrSupport {
       final eligible = result?['eligibleForHdrPlayback'] == true;
       final modes = (result?['availableHdrModes'] as num?)?.toInt() ?? 0;
       final canPresent = result?['supported'] == true;
+      // Diagnostic line for the simulator/device checks, which have no other
+      // way to see why a rendition was or was not routed natively. Debug-only,
+      // and the release constraint check greps for this marker.
+      if (kDebugMode) {
+        debugPrint(
+          'HDR_PATH eligible=$eligible modes=$modes canPresent=$canPresent '
+          'reason=${result?['reason']}',
+        );
+      }
       final capability = HdrPathCapability(
         canPresent: canPresent,
         eligible: eligible,
         availableModes: modes,
+        // The native side distinguishes "this device cannot" from "this output
+        // cannot"; passing its reason through keeps the message accurate.
         reason: canPresent
             ? null
-            : '设备或当前输出不支持 HDR 呈现',
+            : switch ((result?['reason'] as String?)?.trim()) {
+                final r? when r.isNotEmpty => r,
+                _ => '设备或当前输出不支持 HDR 呈现',
+              },
       );
       _cached = capability;
       _cachedAt = DateTime.now();

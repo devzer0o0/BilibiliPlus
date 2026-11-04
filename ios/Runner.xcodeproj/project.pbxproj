@@ -21,6 +21,7 @@
 		B7D3AA012FCB1A0000C0D3E1 /* HlsBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D3AA022FCB1A0000C0D3E1 /* HlsBridge.swift */; };
 		B7D3A9F92FCB1A0000C0D3E1 /* DashIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D3A9FA2FCB1A0000C0D3E1 /* DashIndex.swift */; };
 		B7D3A9FB2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D3A9FC2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift */; };
+		C0A1B2C32FD0000100C0D3E2 /* HdrCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A1B2C42FD0000100C0D3E2 /* HdrCapability.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -61,6 +62,7 @@
 		B7D3AA022FCB1A0000C0D3E1 /* HlsBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HlsBridge.swift; sourceTree = "<group>"; };
 		B7D3A9FA2FCB1A0000C0D3E1 /* DashIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashIndex.swift; sourceTree = "<group>"; };
 		B7D3A9FC2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mp4BoxPatcher.swift; sourceTree = "<group>"; };
+		C0A1B2C42FD0000100C0D3E2 /* HdrCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HdrCapability.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -131,6 +133,7 @@
 				B7D3AA022FCB1A0000C0D3E1 /* HlsBridge.swift */,
 				B7D3A9FA2FCB1A0000C0D3E1 /* DashIndex.swift */,
 				B7D3A9FC2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift */,
+				C0A1B2C42FD0000100C0D3E2 /* HdrCapability.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -309,6 +312,7 @@
 				B7D3AA012FCB1A0000C0D3E1 /* HlsBridge.swift in Sources */,
 				B7D3A9F92FCB1A0000C0D3E1 /* DashIndex.swift in Sources */,
 				B7D3A9FB2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift in Sources */,
+				C0A1B2C32FD0000100C0D3E2 /* HdrCapability.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

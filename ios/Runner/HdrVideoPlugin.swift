@@ -80,19 +80,34 @@ final class HdrVideoPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       // any device without HDR display support, answers 0 - routing a PQ
       // rendition there makes AVFoundation filter out every alternate and the
       // item never becomes ready.
+      // Two different questions:
+      //
+      //  * `eligibleForHDRPlayback` - this *device model* could play HDR.
+      //    True on a simulator running on an HDR-capable Mac, and true on a
+      //    phone whose panel is HDR, regardless of what is on screen now.
+      //  * `availableHDRModes` - this *output path* can present it right now.
+      //    Zero on a simulator, and zero on a device whose display settings
+      //    currently disable HDR.
+      //
+      // Presenting needs the second. Using eligibility alone routed the PQ
+      // rendition to AVPlayerLayer on a simulator, where it decodes but the
+      // picture freezes - measured, not assumed.
       var modes = 0
+      var modesKnown = false
       if #available(iOS 17.0, *) {
         modes = AVPlayer.availableHDRModes.rawValue
+        modesKnown = true
       }
-      // `eligibleForHDRPlayback` is available on the deployment floor and is the
-      // signal that actually answers "can this device play HDR". The iOS 17
-      // mode mask is an *additional* answer, not the only one: requiring it made
-      // an iOS 15/16 device look incapable even when it was not.
-      let eligible = AVPlayer.eligibleForHDRPlayback
+      let capability = HdrCapability(
+        eligible: AVPlayer.eligibleForHDRPlayback,
+        modes: modes,
+        modesKnown: modesKnown
+      )
       result([
         "availableHdrModes": Int(modes),
-        "eligibleForHdrPlayback": eligible,
-        "supported": eligible || modes != 0,
+        "eligibleForHdrPlayback": capability.eligible,
+        "supported": capability.canPresent,
+        "reason": capability.reason ?? "",
       ])
       return
     }

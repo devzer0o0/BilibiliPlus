@@ -57,7 +57,7 @@ if [ -d "$APP" ]; then
   DART_APP="$APP/Frameworks/App.framework/App"
   if [ -f "$DART_APP" ]; then
     LEAK=0
-    for kw in VPARAM TEMP_FORCE_HDR TEMP_NO_TONEMAP SURFACE_ PLVP_; do
+    for kw in VPARAM TEMP_FORCE_HDR TEMP_NO_TONEMAP SURFACE_ PLVP_ HDR_PATH; do
       n=$(strings -a "$DART_APP" 2>/dev/null | grep -c "$kw")
       if [ "$n" != "0" ]; then
         fail "debug marker '$kw' present in release ($n)"

@@ -85,7 +85,7 @@ DART="$APP/Frameworks/App.framework/App"
 if [ -f "$DART" ]; then
   # Includes the experiment scaffolding used in this repo's debugging passes,
   # because leaving any of it in a shipping binary is the same mistake.
-  for kw in QA_PICK 'prefer=' 'picked=' VPARAM TEMP_FORCE_HDR \
+  for kw in QA_PICK HDR_PATH 'prefer=' 'picked=' VPARAM TEMP_FORCE_HDR \
             TEMP_NO_TONEMAP SURFACE_ PLVP_; do
     n=$(strings -a "$DART" 2>/dev/null | grep -c "$kw")
     [ "$n" = "0" ] && note "'$kw' absent" || bad "'$kw' appears $n time(s)"
