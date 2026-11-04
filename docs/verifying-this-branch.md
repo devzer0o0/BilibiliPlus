@@ -44,13 +44,20 @@ tool/hdr_regression.sh <bvid> <qn> <tonemap>  # capture + classify frames
 tool/check_player_frame.py <png...>           # black / green / ok
 ```
 
+> **Read the next section as history, not as current evidence.** It describes a
+> build from before the generation, capability and HDR-description work in this
+> branch. `picked=125` states which rendition the *selection function* chose; it
+> is not proof that HDR was presented on a screen, and the "debounced HUD FPS"
+> line was an in-player counter, not a measured output frame rate. The current
+> status of each HDR format is in `ios-native-playback-architecture.md` §5.
+
 ## HDR actually plays, and the gate is what protects it
 
 Measured with `tool/playback_check.sh BV1b24y1w73N 125 <tonemap> 1`:
 
 | Tone mapping | Logged pick | Frames | Reading |
 | --- | --- | --- | --- |
-| on | `picked=125 codec=HEVC` | 3 distinct, RGB ok, HUD showed FPS 49 | 10-bit HDR decoded and rendered correctly |
+| on | `picked=125 codec=HEVC` | 3 distinct, RGB ok, HUD showed FPS 49 | 10-bit stream decoded and drew a picture (HDR presentation not measured) |
 | off | `picked=120 codec=AVC` | 3 distinct, RGB ok | the gate refused to fetch 125 at all |
 
 The important part is the second row. With the switch off, 125 is never
