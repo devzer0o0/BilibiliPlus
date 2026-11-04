@@ -74,6 +74,13 @@ final class HdrVideoPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     let args = call.arguments as? [String: Any] ?? [:]
     let sessionId = (args["sessionId"] as? String) ?? ""
+    // Records that the channel is live at all. Without this, a method call that
+    // returns to Dart and produces no further trace cannot be told apart from a
+    // handler that was never entered.
+    PlaybackDiagnostics.shared.sample([
+      "stage": "handle",
+      "detail": call.method,
+    ])
 
     if call.method == "hdrCapability" {
       // Whether this device can present extended range at all. A simulator, or
@@ -386,6 +393,13 @@ final class HdrVideoSession: NSObject {
   private var audioOnly = false
   private var currentVideoUrl: URL?
   private var currentAudioUrl: URL?
+
+  /// Colour description read from the video init segment, when it carried one.
+  ///
+  /// This is the only authoritative source for VIDEO-RANGE: the codec string
+  /// cannot distinguish PQ from HLG, and guessing is what left the device
+  /// treating HDR as SDR.
+  static var describedRange: String?
   private var desiredPlaying = true
   private var desiredRate: Double = 1
   private var pendingSeekMs: Int?
@@ -399,6 +413,86 @@ final class HdrVideoSession: NSObject {
 
   /// Progress is emitted at about 4 Hz; everything else immediately.
   private var lastEmit: CFTimeInterval = 0
+
+  // MARK: - Stall accounting
+  //
+  // A stutter is invisible in a screenshot. These record what the player did
+  // over the session so "it is janky" becomes a number: how long the item spent
+  // waiting to play, how many times it stalled and recovered, and how far the
+  // clock fell behind wall time while it was nominally playing.
+
+  /// Total seconds spent with the player waiting (buffer starvation included).
+  private var stalledSeconds: Double = 0
+  /// Number of transitions into waitingToPlayAtSpecifiedRate.
+  private var stallCount = 0
+  /// Largest single stall, in milliseconds.
+  private var longestStallMs: Int = 0
+  /// Cumulative media time advanced (for an effective-rate comparison).
+  private var playedSeconds: Double = 0
+  /// Wall time since the first item became ready.
+  private var wallStart: CFTimeInterval?
+  private var lastSampleTime: CFTimeInterval = 0
+  private var lastSamplePosition: Double = 0
+  private var wasWaiting = false
+  private var waitStart: CFTimeInterval = 0
+
+  /// Samples the player clock. Called from the periodic observer, so it never
+  /// adds a timer of its own.
+  private func sampleStall() {
+    guard ready, !disposed else { return }
+    let now = CACurrentMediaTime()
+    if wallStart == nil {
+      wallStart = now
+      lastSampleTime = now
+      lastSamplePosition = CMTimeGetSeconds(player.currentTime())
+    }
+    let position = CMTimeGetSeconds(player.currentTime())
+    if position.isFinite, lastSamplePosition.isFinite,
+       position >= lastSamplePosition,
+       player.timeControlStatus == .playing {
+      playedSeconds += position - lastSamplePosition
+    }
+    lastSamplePosition = position.isFinite ? position : lastSamplePosition
+    lastSampleTime = now
+
+    let waiting = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+    if waiting && !wasWaiting {
+      stallCount += 1
+      waitStart = now
+    } else if !waiting && wasWaiting {
+      let duration = now - waitStart
+      stalledSeconds += duration
+      longestStallMs = max(longestStallMs, Int(duration * 1000))
+    }
+    wasWaiting = waiting
+  }
+
+  /// Writes one rate-limited sample of playback health to the app container.
+  ///
+  /// This is what makes a device stutter measurable without a console: the host
+  /// pulls the file instead of watching a log stream.
+  private func recordDiagnostics() {
+    var fields = stallReport
+    fields["pos"] = Int(CMTimeGetSeconds(player.currentTime()) * 1000)
+    fields["ready"] = ready
+    if let bridge { fields["brSeg"] = bridge.counterSnapshot()["segments"] ?? 0 }
+    PlaybackDiagnostics.shared.sample(fields)
+  }
+
+  /// Stall counters, for describe() and the device-measurement entry point.
+  var stallReport: [String: Any] {
+    let wall = wallStart.map { CACurrentMediaTime() - $0 } ?? 0
+    let effective = wall > 0 ? playedSeconds / wall : 0
+    return [
+      "stallCount": stallCount,
+      "stalledSeconds": (stalledSeconds * 1000).rounded() / 1000,
+      "longestStallMs": longestStallMs,
+      "playedSeconds": (playedSeconds * 1000).rounded() / 1000,
+      "wallSeconds": (wall * 1000).rounded() / 1000,
+      "effectiveRate": (effective * 1000).rounded() / 1000,
+      "waitingForData": player.reasonForWaitingToPlay != nil,
+    ]
+  }
 
   init(
     sessionId: String,
@@ -480,14 +574,19 @@ final class HdrVideoSession: NSObject {
     // still on the main thread, so a slow index response froze the UI for up to
     // twenty seconds per track.
     let generation = beginPreparation()
+    stage("open", "declaredVideo=\(declaredVideoBase != nil)")
     readSegmentBase(videoUrl, declared: declaredVideoBase) { [weak self] videoBase in
       guard let self, self.isCurrent(generation) else { return }
       guard let videoBase else {
         self.fail("no-index")
         return
       }
+      self.stage("video-base", "init=\(videoBase.initialization)")
+      self.readColorDescription(videoUrl, videoBase) { [weak self] in
+      guard let self, self.isCurrent(generation) else { return }
       self.fetchIndex(videoUrl, videoBase) { [weak self] index in
         guard let self, self.isCurrent(generation) else { return }
+        self.stage("video-index", "refs=\(index?.references.count ?? -1)")
         guard let index,
               let videoTrack = self.makeTrack(
                 url: videoUrl, base: videoBase, index: index, isAudio: false
@@ -496,6 +595,7 @@ final class HdrVideoSession: NSObject {
           self.fail("no-index")
           return
         }
+        self.stage("video-track", "range=\(videoTrack.videoRange ?? "nil")")
         guard let audioUrl else {
           self.startBridge(video: videoTrack, audio: nil)
           return
@@ -524,7 +624,42 @@ final class HdrVideoSession: NSObject {
           }
         }
       }
+      }
     }
+  }
+
+  /// Last-resort range for a ten-bit stream whose init segment carries no colr
+  /// box.
+  ///
+  /// Measured on device: this 4K/HDR clip's video init segment is 1113 bytes with
+  /// no colr box, so both the media read and the caller's declaration are empty.
+  /// The playlist then declared no VIDEO-RANGE, AVFoundation parsed a PQ stream
+  /// as SDR, and the item failed with CoreMediaErrorDomain -12927.
+  ///
+  /// This does not overrule real metadata - it only runs when there is none, and
+  /// it is limited to HEVC/AV1 ten-bit, which the catalogue serves as HDR. A
+  /// 10-bit SDR clip would be mislabelled by it; that is why the media read and
+  /// the caller come first, and why the choice is recorded in the diagnostics.
+  static func codecRangeForTenBit(_ media: Media) -> String? {
+    guard let codecs = media.videoCodecs, !codecs.isEmpty else { return nil }
+    let hevc = codecs.hasPrefix("hev1") || codecs.hasPrefix("hvc1")
+    let av1 = codecs.hasPrefix("av01")
+    guard hevc || av1 else { return nil }
+    let tenBit = codecs.contains("hvc1.2") || codecs.contains("hev1.2")
+      || (av1 && codecs.split(separator: ".").count > 3
+            && codecs.split(separator: ".")[3] == "10")
+    guard tenBit else { return nil }
+    // HDR10/PQ is what the catalogue serves for these rungs; HLG would need the
+    // media to say so, which this path by definition cannot.
+    return "PQ"
+  }
+
+  /// Reports the range read from the media, so a device log can show whether the
+  /// playlist declared one. Debug/profile only; compiled out of release.
+  static func traceColor(_ range: String?) {
+    #if PILIPLUS_DIAGNOSTICS
+    NSLog("[hdr] colr VIDEO-RANGE=%@", range ?? "unspecified")
+    #endif
   }
 
   // MARK: - Preparation cancellation
@@ -575,7 +710,15 @@ final class HdrVideoSession: NSObject {
       width: isAudio ? nil : media.width,
       height: isAudio ? nil : media.height,
       frameRate: isAudio ? nil : media.frameRate,
-      videoRange: isAudio ? nil : HdrVideoSession.videoRange(for: media),
+      // Read from the init segment's colr box when it has one; the caller's
+      // declared range is only a fallback. Measured on a device: with no
+      // VIDEO-RANGE in the playlist, AVFoundation logged the variant without a
+      // range and treated a PQ stream as SDR.
+      videoRange: isAudio
+        ? nil
+        : (Self.describedRange
+            ?? HdrVideoSession.videoRange(for: media)
+            ?? Self.codecRangeForTenBit(media)),
       bandwidth: 0,
       headers: Self.upstreamHeaders
     )
@@ -586,6 +729,39 @@ final class HdrVideoSession: NSObject {
   /// The old version waited on a DispatchSemaphore with a 20 second timeout.
   /// It was called from the platform-channel handler on the main thread, so a
   /// slow index response froze the UI instead of merely delaying playback.
+  /// Reads the video init segment and records its colour description.
+  ///
+  /// Bounded (one ranged read of the declared initialization range, capped) and
+  /// cancellable; a failure leaves the range unknown rather than asserting SDR.
+  private func readColorDescription(
+    _ url: URL,
+    _ base: DashSegmentBase,
+    completion: @escaping () -> Void
+  ) {
+    var request = URLRequest(url: url)
+    let range = base.initialization
+    request.setValue("bytes=\(range)", forHTTPHeaderField: "Range")
+    for (key, value) in Self.upstreamHeaders {
+      request.setValue(value, forHTTPHeaderField: key)
+    }
+    request.timeoutInterval = 20
+    var task: URLSessionDataTask?
+    task = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+      if let self, let finished = task { self.untrack(finished) }
+      if let data, !data.isEmpty {
+        HdrVideoSession.describedRange = ColorDescription.read(data)?.videoRange
+        HdrVideoSession.traceColor(HdrVideoSession.describedRange)
+      }
+      completion()
+    }
+    if let task {
+      track(task)
+      task.resume()
+    } else {
+      completion()
+    }
+  }
+
   private func fetchIndex(
     _ url: URL,
     _ base: DashSegmentBase,
@@ -707,8 +883,10 @@ final class HdrVideoSession: NSObject {
       }
       self.bridge = bridge
       sourceNote = "hls segments=\(video.index?.references.count ?? 0)"
+      stage("bridge-up", "port=\(port) segs=\(video.index?.references.count ?? 0)")
       attach(AVPlayerItem(url: url))
     } catch {
+      stage("bridge-error", "\(error)")
       fail("bridge-failed")
     }
   }
@@ -720,12 +898,16 @@ final class HdrVideoSession: NSObject {
       switch observed.status {
       case .readyToPlay:
         self.ready = true
+        PlaybackDiagnostics.shared.begin(sessionId: self.sessionId)
+        self.stage("item-ready", "tracks=\(observed.tracks.count)")
         self.applyIntent()
         self.emit(force: true)
       case .failed:
         self.fail(observed.error?.localizedDescription ?? "item-failed")
       default:
-        break
+        // .unknown is the state a playlist that never resolves sits in, so it
+        // must be visible: silence here is what made "still loading" invisible.
+        self.stage("item-status", "\(observed.status.rawValue)")
       }
     }
     if let endObserver {
@@ -750,6 +932,8 @@ final class HdrVideoSession: NSObject {
       ) { [weak self] _ in
         guard let self, !self.disposed else { return }
         self.resumeIfStalled()
+        self.sampleStall()
+        self.recordDiagnostics()
         self.emit()
       }
     }
@@ -889,6 +1073,7 @@ final class HdrVideoSession: NSObject {
     if disposed { return }
     disposed = true
     cancelPreparation()
+    PlaybackDiagnostics.shared.end()
     pip?.delegate = nil
     pip = nil
     pipPossibleObservation?.invalidate()
@@ -913,7 +1098,23 @@ final class HdrVideoSession: NSObject {
   private func fail(_ reason: String) {
     failure = reason
     sourceNote = reason
+    // A failed item that only reaches a private field leaves the UI on 加载中
+    // forever. It is also what the user experiences as "卡住": the surface is
+    // black, the progress bar is frozen, and nothing says why.
+    PlaybackDiagnostics.shared.sample([
+      "stage": "failed",
+      "reason": reason,
+    ])
     emit(force: true)
+  }
+
+  /// Records a preparation milestone, so a session that never becomes ready can
+  /// be told apart from one that becomes ready and then stalls.
+  private func stage(_ name: String, _ detail: String = "") {
+    PlaybackDiagnostics.shared.sample([
+      "stage": name,
+      "detail": detail,
+    ])
   }
 
   static let upstreamHeaders = [
@@ -952,7 +1153,13 @@ final class HdrVideoSession: NSObject {
       "completed": completed,
       "timeControl": player.timeControlStatus.rawValue,
     ]
-    if let failure { state["error"] = failure }
+    if let failure {
+      state["error"] = failure
+      // Human-readable subset: a CoreMedia domain code is not a user message.
+      state["errorKind"] = failure.contains("-12927")
+        ? "playlist-rejected"
+        : (failure.contains("no-index") ? "no-index" : "item-failed")
+    }
     HdrVideoPlugin.broadcast([
       "event": "state",
       "sessionId": sessionId,
@@ -1009,6 +1216,10 @@ final class HdrVideoSession: NSObject {
       out["availableHdrModes"] = AVPlayer.availableHDRModes.rawValue
     }
     out["displaySupportsHdr"] = Self.displaySupportsHdr()
+    // Playback health, so a stutter can be attributed instead of guessed at.
+    out["stalls"] = stallReport
+    if let bridge { out["bridge"] = bridge.counterSnapshot() }
+    out["declaredVideoRange"] = HdrVideoSession.describedRange ?? "unspecified"
     guard let item = player.currentItem else {
       traceDescription(out)
       return out

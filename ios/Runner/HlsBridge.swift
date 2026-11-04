@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import QuartzCore
 
 /// Turns bilibili's fragmented DASH tracks into an HLS presentation that
 /// AVFoundation can play as **one** `AVPlayerItem`.
@@ -44,6 +45,41 @@ final class HlsBridge {
   let token: String
   private(set) var port: UInt16 = 0
 
+  /// Counters for the bridge itself.
+  ///
+  /// A stutter can originate here or inside AVFoundation, and without numbers
+  /// the two are indistinguishable. These record how many segments were served,
+  /// how long each took, how much upstream work ran in parallel, and how many
+  /// bytes were copied - the numbers needed to tell "the bridge is the
+  /// bottleneck" from "the player is".
+  struct Counters {
+    var segments = 0
+    var bytes = 0
+    var inFlight = 0
+    var peakInFlight = 0
+    var slowestMs = 0
+    var totalMs = 0
+    var failures = 0
+    var playlists = 0
+  }
+
+  private var counters = Counters()
+  private let counterQueue = DispatchQueue(label: "pilipilus.hlsbridge.counters")
+
+  func counterSnapshot() -> [String: Any] {
+    counterQueue.sync {
+      [
+        "segments": counters.segments,
+        "bytes": counters.bytes,
+        "peakInFlight": counters.peakInFlight,
+        "inFlight": counters.inFlight,
+        "slowestMs": counters.slowestMs,
+        "totalMs": counters.totalMs,
+        "failures": counters.failures,
+        "playlists": counters.playlists,
+      ]
+    }
+  }
   private var listener: NWListener?
   private var connections: [ObjectIdentifier: NWConnection] = [:]
   /// Upstream requests belonging to this bridge, so stop() really stops them.
@@ -271,6 +307,7 @@ final class HlsBridge {
     HlsBridge.trace("GET \(rest)")
 
     if rest == "master.m3u8" {
+      counterQueue.sync { counters.playlists += 1 }
       sendM3U8(masterPlaylist(), on: connection)
     } else if rest == "video.m3u8" {
       sendM3U8(Self.playlist(for: video, kind: "v", token: token), on: connection)
@@ -373,9 +410,24 @@ final class HlsBridge {
     }
     request.timeoutInterval = 60
     let expected = range.upperBound - range.lowerBound + 1
+    let started = CACurrentMediaTime()
+    let byteCount = expected
+    counterQueue.sync {
+      counters.inFlight += 1
+      counters.peakInFlight = max(counters.peakInFlight, counters.inFlight)
+    }
     var task: URLSessionDataTask?
     task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
       guard let self, !self.stopped else { return }
+      let elapsedMs = Int((CACurrentMediaTime() - started) * 1000)
+      self.counterQueue.sync {
+        self.counters.inFlight -= 1
+        self.counters.segments += 1
+        self.counters.bytes += byteCount
+        self.counters.totalMs += elapsedMs
+        self.counters.slowestMs = max(self.counters.slowestMs, elapsedMs)
+        if error != nil { self.counters.failures += 1 }
+      }
       if let finished = task {
         self.queue.async { self.upstreamTasks.removeValue(forKey: ObjectIdentifier(finished)) }
       }

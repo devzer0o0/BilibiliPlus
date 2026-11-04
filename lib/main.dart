@@ -10,6 +10,7 @@ import 'package:PiliPlus/common/widgets/scroll_behavior.dart';
 import 'package:PiliPlus/http/init.dart';
 import 'package:PiliPlus/models/common/theme/theme_color_type.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/playback_diagnostics.dart';
 import 'package:PiliPlus/router/app_pages.dart';
 import 'package:PiliPlus/services/account_service.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
@@ -91,12 +92,29 @@ Future<void> _initAppPath() async {
   appSupportDirPath = (await getApplicationSupportDirectory()).path;
 }
 
+/// Marks a start-up phase so the launch screen's duration can be attributed.
+///
+/// Everything before the first `runApp` frame is time the user spends looking
+/// at the launch storyboard. Without these marks the only observable is "it
+/// takes two seconds", which does not say which wait to move off the critical
+/// path. Bounded to a handful of lines, release-inert.
+Stopwatch? _startupWatch;
+void _markStartup(String phase) {
+  final w = _startupWatch;
+  if (w == null) return;
+  PlaybackDiagnostics.record('startup', '${w.elapsedMilliseconds}ms $phase');
+}
+
 void main() async {
+  _startupWatch = Stopwatch()..start();
   ScaledWidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  _markStartup('binding+mediakit');
   await _initAppPath();
+  _markStartup('appPath');
   try {
     await GStorage.init();
+    _markStartup('storage');
   } catch (e) {
     await Utils.copyText(e.toString(), needToast: false);
     if (kDebugMode) debugPrint('GStorage init error: $e');
@@ -109,6 +127,7 @@ void main() async {
     CacheManager.ensureInitialized(),
     ?FontUtils.init(),
   ]);
+  _markStartup('paths+cache+fonts');
   Get
     ..lazyPut(AccountService.new)
     ..lazyPut(DownloadService.new);
@@ -121,6 +140,7 @@ void main() async {
       setupServiceLocator(),
       if (Platform.isIOS) IOSPipHelper.init(),
     ]);
+    _markStartup('orientation+locator+pip');
   } else if (Platform.isWindows) {
     if (await WebViewEnvironment.getAvailableVersion() != null) {
       webViewEnvironment = await WebViewEnvironment.create(
@@ -136,6 +156,7 @@ void main() async {
   Request();
   Request.setCookie();
   RequestUtils.syncHistoryStatus();
+  _markStartup('request-init');
 
   SmartDialog.config.toast = SmartConfigToast(displayType: .onlyRefresh);
 
@@ -193,6 +214,7 @@ void main() async {
       customParameters: customParameters,
     );
   } else {
+    _markStartup('runApp');
     runApp(const MyApp());
   }
 

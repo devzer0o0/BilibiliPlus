@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:PiliPlus/plugin/pl_player/backend/playback_backend.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/playback_diagnostics.dart';
 import 'package:flutter/services.dart';
 
 /// The AVPlayer/AVPlayerLayer path on iOS.
@@ -105,16 +106,24 @@ class NativePlaybackBackend implements PlaybackBackend {
 
   @override
   Future<void> open(PlaybackRequest request) async {
+    PlaybackDiagnostics.record('backend-open', 'begin ${request.sourceKey}');
     _eventsSub ??= _events.receiveBroadcastStream().listen(_onEvent);
-    await _invoke('createSession', {
+    PlaybackDiagnostics.record('backend-open', 'events-subscribed');
+    try {
+      await _invoke('createSession', {
       ..._describeRequest(request),
       'url': request.videoUrl,
       'audioUrl': request.audioUrl,
       'startMs': request.startPosition?.inMilliseconds ?? 0,
       'autoPlay': request.autoPlay,
-      'rate': request.rate,
-      'sourceKey': request.sourceKey,
-    });
+        'rate': request.rate,
+        'sourceKey': request.sourceKey,
+      });
+      PlaybackDiagnostics.record('backend-open', 'createSession-ok');
+    } catch (err) {
+      PlaybackDiagnostics.record('backend-open', 'createSession-failed $err');
+      rethrow;
+    }
   }
 
   /// Replaces the media on the existing session instead of recreating the

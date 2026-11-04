@@ -17,6 +17,7 @@ cp "$ROOT/ios/Runner/DashIndex.swift" \
    "$ROOT/ios/Runner/HlsBridge.swift" \
    "$ROOT/ios/Runner/Mp4BoxPatcher.swift" \
    "$ROOT/ios/Runner/HdrCapability.swift" \
+   "$ROOT/ios/Runner/ColorDescription.swift" \
    "$WORK/Sources/Parser/"
 cp "$ROOT"/ios/RunnerTests/*.swift "$WORK/Tests/ParserTests/"
 

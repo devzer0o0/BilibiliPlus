@@ -39,6 +39,7 @@ import 'package:PiliPlus/plugin/pl_player/models/video_fit_type.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/danmaku_options.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/decoder_probe.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/diagnostics.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/playback_diagnostics.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/accounts.dart';
@@ -96,7 +97,24 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   static PlPlayerController? _instance;
 
-  PlayerStatus playerStatus = .paused;
+  /// Playback status, backed by an observable so `Obx` can depend on it.
+  ///
+  /// It was a plain field, which is why the play/pause button rendered as a grey
+  /// box: `PlayOrPauseButton` wraps its icon in an `Obx`, that closure read a
+  /// non-observable value, GetX logged "[Get] the improper use of a GetX has
+  /// been detected", the build failed and Flutter substituted a `RenderErrorBox`
+  /// (light grey, 42x34 - exactly the size of the button).
+  ///
+  /// The name and the type are unchanged for every caller: `playerStatus` still
+  /// reads and writes a `PlayerStatus`. Only the storage moved inside an Rx, so
+  /// the existing write sites and the status listeners keep working.
+  final Rx<PlayerStatus> _playerStatus = Rx(.paused);
+
+  PlayerStatus get playerStatus => _playerStatus.value;
+  set playerStatus(PlayerStatus value) {
+    if (_playerStatus.value == value) return;
+    _playerStatus.value = value;
+  }
 
   final Rx<DataStatus> dataStatus = Rx(.none);
 
@@ -398,6 +416,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           : (gen, sessionId) => nativeBackendOverride!(gen, sessionId),
     );
     _routing = PlaybackRoute.native;
+    PlaybackDiagnostics.record(
+      'native-open',
+      'gen=$generation key=${request.sourceKey} start=${request.startPosition}',
+    );
     _nativeEvents?.cancel();
     _nativeEvents = null;
     await _nativePip?.bind(request.sourceKey);
@@ -1145,6 +1167,17 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       }
 
       final useNative = nativeHdrUrl != null && nativeHdrUrl.isNotEmpty;
+      // Which backend this switch actually chose, and why. Without this line a
+      // black player cannot be attributed: "the native path was never asked" and
+      // "the native path was asked and never became ready" look identical.
+      PlaybackDiagnostics.record(
+        'route',
+        'useNative=$useNative url=${nativeHdrUrl != null} '
+            'audio=${nativeHdrAudioUrl != null} '
+            'range=${nativeVideoRange?.isValid} codecs=$nativeVideoCodecs '
+            'size=${nativeWidth}x$nativeHeight autoplay=$_autoPlay '
+            'player=${_videoPlayerController != null}',
+      );
 
       // One media switch, one generation, allocated here and nowhere else.
       // The session and the backend receive this number unchanged; the surface
@@ -1228,6 +1261,12 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       onInit?.call();
     } catch (err, stackTrace) {
       dataStatus.value = DataStatus.error;
+      // This catch used to swallow every failure into a debug print, so a source
+      // that never opened looked like an eternal 加载中 with no record anywhere.
+      PlaybackDiagnostics.record(
+        'setDataSource-failed',
+        '$err :: ${stackTrace.toString().split('\n').take(4).join(' | ')}',
+      );
       if (kDebugMode) {
         debugPrint(stackTrace.toString());
         debugPrint('plPlayer err:  $err');
@@ -1373,6 +1412,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
     _startListeners(player);
 
+    PlaybackDiagnostics.record('mpv-options', opt.toString());
     return player;
   }
 
@@ -1676,6 +1716,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           }
         })),
       stream.error.listen((String event) {
+        // Record what mpv actually said, not just what the app chose to show.
+        // A 4K stream that never starts leaves the UI on 加载中 with no record
+        // anywhere of why; the file is bounded and release-inert.
+        PlaybackDiagnostics.record('mpv-error', event);
         if (dataSource is FileSource &&
             event.startsWith("Failed to open file")) {
           return;

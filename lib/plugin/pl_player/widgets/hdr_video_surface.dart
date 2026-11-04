@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:PiliPlus/plugin/pl_player/backend/playback_backend.dart';
 import 'package:PiliPlus/plugin/pl_player/backend/playback_session.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart' show PlatformViewHitTestBehavior;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -195,6 +196,16 @@ class _HdrVideoSurfaceState extends State<HdrVideoSurface> {
     }
     return UiKitView(
       viewType: _viewType,
+      // The surface is a picture, not a control: every touch has to reach the
+      // Flutter gestures layered above it (tap to toggle the controls, drag to
+      // seek, pinch to zoom).
+      //
+      // The default is `opaque`, which marks the whole platform-view area as
+      // consuming hits. That is why the progress bar could not be summoned while
+      // an HDR video played: the tap landed on the AVPlayerLayer's area and the
+      // Flutter tap recognizer never saw it. `transparent` does not change what
+      // is drawn - it only stops the layer from claiming the pointer.
+      hitTestBehavior: PlatformViewHitTestBehavior.transparent,
       // The view joins an existing session; it never creates one, so a rebuild
       // cannot restart the stream.
       creationParams: {

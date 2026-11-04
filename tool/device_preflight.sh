@@ -34,9 +34,8 @@ xcrun devicectl --version >/dev/null 2>&1 || state BLOCKED_TOOLING "devicectl br
 
 # devicectl prints a human table by default. Ask for JSON, and fall back only
 # when this build of the tool does not offer it.
-json_devices() {
-  xcrun devicectl list devices --json-output /dev/stdout 2>/dev/null
-}
+# (removed: writing JSON to stdout while python read its program from a heredoc
+#  discarded the data; the device list is written to a temp file instead.)
 
 attempt=0
 while [ "$attempt" -lt "$RETRIES" ]; do
@@ -45,34 +44,52 @@ while [ "$attempt" -lt "$RETRIES" ]; do
   [ $((NOW - START)) -ge "$DEADLINE" ] && \
     state BLOCKED_DEVICE_UNAVAILABLE "deadline ${DEADLINE}s exceeded after $attempt attempt(s)" 5
 
-  LIST=$(json_devices)
+  # The JSON must arrive as a file, not on stdin: python reads its program from
+  # the heredoc, and a pipe on the same line is silently discarded. That made
+  # every parse fail, which this script then reported as "device not reachable"
+  # - a false BLOCKED on a phone that was connected the whole time.
+  LIST_FILE=$(mktemp -t pilipilus-devs)
+  xcrun devicectl list devices --json-output "$LIST_FILE" >/dev/null 2>&1
   REACH=""
   LOCKED=""
-  if [ -n "$LIST" ] && command -v python3 >/dev/null; then
-    read -r REACH LOCKED <<<"$(printf '%s' "$LIST" | python3 - "$UDID" <<'PY'
+  if [ -s "$LIST_FILE" ] && command -v python3 >/dev/null; then
+    read -r REACH LOCKED <<<"$(python3 - "$LIST_FILE" "$UDID" <<'PY'
 import json, sys
-udid = sys.argv[1]
+udid = sys.argv[2]
 try:
-    doc = json.load(sys.stdin)
+    doc = json.load(open(sys.argv[1]))
 except Exception:
     print("parse-error unknown"); raise SystemExit(0)
 devices = doc.get("result", {}).get("devices", [])
 for d in devices:
-    ident = (d.get("hardwareProperties") or {}).get("udid", "")
-    if ident != udid:
+    # CoreDevice moved these into a per-device properties dictionary
+    # (connection/hardware/software/state). Reading only the deprecated
+    # hardwareProperties/connectionProperties shape reported a connected
+    # phone as missing - the one answer this script must never get wrong.
+    props = d.get("properties") or {}
+    hw = props.get("hardware") or d.get("hardwareProperties") or {}
+    conn_props = props.get("connection") or d.get("connectionProperties") or {}
+    dev_props = props.get("deviceProperties") or d.get("deviceProperties") or {}
+    if hw.get("udid", "") != udid:
         continue
-    conn = (d.get("connectionProperties") or {}).get("tunnelState", "")
-    paired = (d.get("connectionProperties") or {}).get("pairingState", "")
-    boot = (d.get("deviceProperties") or {}).get("bootState", "")
-    print(f"{conn or paired or boot or 'unknown'} {boot or 'unknown'}")
+    state = props.get("state") or ""
+    conn = (conn_props.get("tunnelState")
+            or conn_props.get("transportType") or "")
+    paired = conn_props.get("pairingState") or ""
+    boot = dev_props.get("bootState") or ""
+    reach = conn or state or paired or boot or "unknown"
+    print(f"{reach} {boot or 'unknown'}")
     raise SystemExit(0)
 print("missing unknown")
 PY
 )"
   fi
+  rm -f "$LIST_FILE"
 
+  # 'wired'/'network' are the CoreDevice transport values for a reachable
+  # device; 'connected'/'available'/'paired' are the older vocabularies.
   case "${REACH:-}" in
-    connected|available|paired)
+    connected|available|paired|wired|network)
       LOCKED_CHECK=$(xcrun devicectl device info details --device "$UDID" 2>&1 | head -40)
       if printf '%s' "$LOCKED_CHECK" | grep -qi locked; then
         state BLOCKED_LOCKED "device $UDID reports locked; unlock it and rerun" 6

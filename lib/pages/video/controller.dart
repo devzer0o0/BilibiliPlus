@@ -27,6 +27,7 @@ import 'package:PiliPlus/models/common/video/video_decode_type.dart';
 import 'package:PiliPlus/models/common/video/video_type.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
 import 'package:PiliPlus/plugin/pl_player/models/remote_playback.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/playback_diagnostics.dart';
 import 'package:PiliPlus/plugin/pl_player/models/selected_rendition.dart';
 import 'package:PiliPlus/models_new/download/bili_download_entry_info.dart';
 import 'package:PiliPlus/models_new/media_list/media_list.dart';
@@ -1179,6 +1180,14 @@ class VideoDetailController extends GetxController
         allowHdrRungs: await _hdrRouteAvailable,
       );
       lastRenditionFallback.value = selected.fallback;
+      PlaybackDiagnostics.record(
+        'rendition',
+        'id=${selected.video.id} codecs=${selected.video.codecs} '
+            'size=${selected.video.width}x${selected.video.height} '
+            'fps=${selected.video.frameRate} '
+            'fallback=${selected.fallback?.reason.name ?? 'none'} '
+            'accept=${response.acceptQuality}',
+      );
       // One notice per switch, and only when the result is not what was asked
       // for. A silent downgrade is the failure this exists to prevent.
       if (selected.fallback case final fallback?) {

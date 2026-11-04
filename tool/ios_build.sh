@@ -37,10 +37,15 @@ command -v xcodebuild >/dev/null || {
 xcodebuild -version | head -2
 
 echo "== 1. build ($MODE) =="
+# `flutter build ios` treats a bare KEY=VALUE after the flags as a *target*
+# name ("Target file DEVELOPMENT_TEAM=... not found"), so the team is passed to
+# xcodebuild through FLUTTER_XCODE_*, which Flutter forwards verbatim.
 LOG="$(mktemp -t pilipilus-ios-build)"
-( cd "$ROOT" && flutter build ios --"$MODE" \
-    --build-name="${PILIPLUS_BUILD_NAME:-0.0.1}" \
-    DEVELOPMENT_TEAM="$TEAM" ) 2>&1 | tee "$LOG"
+( cd "$ROOT" && \
+    FLUTTER_XCODE_DEVELOPMENT_TEAM="$TEAM" \
+    FLUTTER_XCODE_CODE_SIGN_STYLE=Automatic \
+    flutter build ios --"$MODE" \
+      --build-name="${PILIPLUS_BUILD_NAME:-0.0.1}" ) 2>&1 | tee "$LOG"
 STATUS=${PIPESTATUS[0]}
 APP="$ROOT/build/ios/iphoneos/Runner.app"
 if [ "$STATUS" != "0" ] || [ ! -d "$APP" ]; then

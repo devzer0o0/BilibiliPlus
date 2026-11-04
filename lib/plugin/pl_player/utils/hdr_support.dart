@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show debugPrint, immutable, kDebugMode;
 import 'package:flutter/services.dart' show MethodChannel;
 
+import 'package:PiliPlus/plugin/pl_player/utils/playback_diagnostics.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 
@@ -117,12 +118,14 @@ abstract final class HdrSupport {
       // Diagnostic line for the simulator/device checks, which have no other
       // way to see why a rendition was or was not routed natively. Debug-only,
       // and the release constraint check greps for this marker.
-      if (kDebugMode) {
-        debugPrint(
-          'HDR_PATH eligible=$eligible modes=$modes canPresent=$canPresent '
-          'reason=${result?['reason']}',
-        );
-      }
+      // Recorded in the playback diagnostics file as well: a device has no
+      // console, and this one line decides whether a 10-bit rendition is routed
+      // natively or degraded to SDR.
+      final trace =
+          'eligible=$eligible modes=$modes canPresent=$canPresent '
+          'reason=${result?['reason']}';
+      if (kDebugMode) debugPrint('HDR_PATH $trace');
+      PlaybackDiagnostics.record('hdr-path', trace);
       final capability = HdrPathCapability(
         canPresent: canPresent,
         eligible: eligible,

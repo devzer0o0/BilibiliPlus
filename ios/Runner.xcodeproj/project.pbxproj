@@ -22,6 +22,8 @@
 		B7D3A9F92FCB1A0000C0D3E1 /* DashIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D3A9FA2FCB1A0000C0D3E1 /* DashIndex.swift */; };
 		B7D3A9FB2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D3A9FC2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift */; };
 		C0A1B2C32FD0000100C0D3E2 /* HdrCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A1B2C42FD0000100C0D3E2 /* HdrCapability.swift */; };
+		C0A1B2C52FD0000100C0D3E2 /* ColorDescription.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A1B2C62FD0000100C0D3E2 /* ColorDescription.swift */; };
+		C0A1B2C72FD0000100C0D3E2 /* PlaybackDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A1B2C82FD0000100C0D3E2 /* PlaybackDiagnostics.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -63,6 +65,8 @@
 		B7D3A9FA2FCB1A0000C0D3E1 /* DashIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashIndex.swift; sourceTree = "<group>"; };
 		B7D3A9FC2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mp4BoxPatcher.swift; sourceTree = "<group>"; };
 		C0A1B2C42FD0000100C0D3E2 /* HdrCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HdrCapability.swift; sourceTree = "<group>"; };
+		C0A1B2C62FD0000100C0D3E2 /* ColorDescription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorDescription.swift; sourceTree = "<group>"; };
+		C0A1B2C82FD0000100C0D3E2 /* PlaybackDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDiagnostics.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -134,6 +138,8 @@
 				B7D3A9FA2FCB1A0000C0D3E1 /* DashIndex.swift */,
 				B7D3A9FC2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift */,
 				C0A1B2C42FD0000100C0D3E2 /* HdrCapability.swift */,
+				C0A1B2C62FD0000100C0D3E2 /* ColorDescription.swift */,
+				C0A1B2C82FD0000100C0D3E2 /* PlaybackDiagnostics.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -313,6 +319,8 @@
 				B7D3A9F92FCB1A0000C0D3E1 /* DashIndex.swift in Sources */,
 				B7D3A9FB2FCB1A0000C0D3E1 /* Mp4BoxPatcher.swift in Sources */,
 				C0A1B2C32FD0000100C0D3E2 /* HdrCapability.swift in Sources */,
+				C0A1B2C52FD0000100C0D3E2 /* ColorDescription.swift in Sources */,
+				C0A1B2C72FD0000100C0D3E2 /* PlaybackDiagnostics.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
