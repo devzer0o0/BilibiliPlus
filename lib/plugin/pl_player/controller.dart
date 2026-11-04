@@ -67,7 +67,12 @@ import 'package:easy_debounce/easy_throttle.dart';
 import 'package:flutter/foundation.dart'
     show ValueListenable, kDebugMode, visibleForTesting;
 import 'package:flutter/services.dart'
-    show DeviceOrientation, HapticFeedback, KeyDownEvent;
+    show
+        DeviceOrientation,
+        HapticFeedback,
+        KeyDownEvent,
+        MethodChannel,
+        PlatformException;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:get/get.dart';
@@ -462,7 +467,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   /// Whether "listen to the video" is a *different* thing from choosing an
   /// audio track: a track switch keeps the picture.
-  bool get audioOnlySupported => capabilities.audioOnly;
+  bool get audioOnlySupported => capabilities.audioOnly || route.isNative;
 
   /// Switches audio-only mode, or reports that it is unsupported.
   ///
@@ -470,6 +475,33 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   /// failure cannot leave the UI claiming a mode that is not running.
   Future<bool> setAudioOnly(bool enabled) async {
     if (onlyPlayAudio.value == enabled) return true;
+    if (route.isNative) {
+      // One AVPlayer, one item: the presentation is rebuilt without a video
+      // track, so the download and the decoder really do stop carrying video.
+      final sessionId = _nativeHost?.openedSessionId;
+      if (sessionId == null) {
+        _toast('听视频不可用：没有活动的原生播放会话');
+        return false;
+      }
+      try {
+        await const MethodChannel(
+          'pilipilus/hdr_video/control',
+        ).invokeMethod<void>('setAudioOnly', {
+          'sessionId': sessionId,
+          'audioOnly': enabled,
+        });
+      } catch (err) {
+        if (kDebugMode) debugPrint('native setAudioOnly failed: $err');
+        _toast(err is PlatformException && err.code == 'audio_only_unsupported'
+            ? '该视频没有独立音轨，无法只听音频'
+            : '听视频切换失败');
+        return false;
+      }
+      onlyPlayAudio.value = enabled;
+      _syncWakeLock();
+      _updatePlaybackState(debugLabel: 'onAudioOnlyChanged');
+      return true;
+    }
     if (!capabilities.audioOnly) {
       _toast(capabilities.unsupportedReason('听视频', route));
       return false;

@@ -107,9 +107,42 @@ final class HlsBridge {
     return max(1, Int(longest.rounded(.up)))
   }
 
+  /// Whether this presentation carries a picture.
+  ///
+  /// Audio-only is a real presentation, not a video track that happens to be
+  /// hidden: hiding the layer would still download and decode every fragment.
+  enum Presentation {
+    case audiovisual
+    case audioOnly
+
+    var isAudioOnly: Bool {
+      if case .audioOnly = self { return true }
+      return false
+    }
+  }
+
+  /// The presentation this bridge serves. Set at construction.
+  var presentation: Presentation = .audiovisual
+
   /// Master playlist: one video variant plus the audio group, when there is a
   /// separate audio track.
+  ///
+  /// For an audio-only presentation there is no variant stream at all, so
+  /// AVFoundation never asks for `video.m3u8` and no video bytes are fetched.
   func masterPlaylist() -> String {
+    if presentation.isAudioOnly, let audio {
+      let codecs = audio.codecs.isEmpty ? "mp4a.40.2" : audio.codecs
+      return [
+        "#EXTM3U",
+        "#EXT-X-VERSION:7",
+        "#EXT-X-INDEPENDENT-SEGMENTS",
+        "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"main\","
+          + "DEFAULT=YES,AUTOSELECT=YES,URI=\"/\(token)/audio.m3u8\"",
+        "#EXT-X-STREAM-INF:BANDWIDTH=\(max(Self.fallbackBandwidth(audio), 1))"
+          + ",CODECS=\"\(codecs)\",AUDIO=\"aud\"",
+        "/\(token)/audio.m3u8",
+      ].joined(separator: "\n")
+    }
     guard video.index != nil else { return "" }
     var lines = ["#EXTM3U", "#EXT-X-VERSION:7", "#EXT-X-INDEPENDENT-SEGMENTS"]
     if audio != nil {

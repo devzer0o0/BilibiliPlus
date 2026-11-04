@@ -199,6 +199,19 @@ final class HdrVideoPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       case "pipStop":
         session.stopPip()
         result(nil)
+      case "setAudioOnly":
+        let enabled = args["audioOnly"] as? Bool ?? false
+        if session.setAudioOnly(enabled) {
+          result(nil)
+        } else {
+          result(
+            FlutterError(
+              code: "audio_only_unsupported",
+              message: "no separate audio track",
+              details: nil
+            )
+          )
+        }
       case "captureFrame":
         result(session.captureFrame())
       case "describe":
@@ -354,6 +367,10 @@ final class HdrVideoSession: NSObject {
     frameRate: nil,
     declaredVideoRange: nil
   )
+  /// Audio-only presentation: one AVPlayer, one item, no video track.
+  private var audioOnly = false
+  private var currentVideoUrl: URL?
+  private var currentAudioUrl: URL?
   private var desiredPlaying = true
   private var desiredRate: Double = 1
   private var pendingSeekMs: Int?
@@ -425,6 +442,10 @@ final class HdrVideoSession: NSObject {
   }
 
   private func open(videoUrl: URL, audioUrl: URL?) {
+    // Remembered so an audio-only switch can rebuild the presentation from the
+    // same media without asking the caller for the playurl again.
+    currentVideoUrl = videoUrl
+    currentAudioUrl = audioUrl
     bridge?.stop()
     bridge = nil
     cancelPreparation()
@@ -638,7 +659,24 @@ final class HdrVideoSession: NSObject {
   }
 
   private func startBridge(video: HlsBridge.Track, audio: HlsBridge.Track?) {
+    // Audio-only needs the audio track; without one there is nothing to play,
+    // so the request is refused instead of silently playing the video.
+    if audioOnly {
+      guard let audio else {
+        fail("audio-only-unsupported")
+        return
+      }
+      let bridge = HlsBridge(video: video, audio: audio)
+      bridge.presentation = .audioOnly
+      start(bridge: bridge, video: video)
+      return
+    }
     let bridge = HlsBridge(video: video, audio: audio)
+
+    start(bridge: bridge, video: video)
+  }
+
+  private func start(bridge: HlsBridge, video: HlsBridge.Track) {
     do {
       let port = try bridge.start()
       guard let url = URL(string: "http://127.0.0.1:\(port)/\(bridge.token)/master.m3u8")
@@ -768,6 +806,30 @@ final class HdrVideoSession: NSObject {
 
   /// Set while something outside this session owns the playback intent.
   var interrupted = false
+
+  /// Switches to an audio-only (or back to audiovisual) presentation.
+  ///
+  /// One player, one item: the same AVPlayer swaps its item, and the position,
+  /// rate and intent are carried across so "听视频" does not restart the video.
+  /// Returns false when the source has no separate audio track, in which case
+  /// nothing is changed.
+  func setAudioOnly(_ enabled: Bool) -> Bool {
+    guard enabled != audioOnly else { return true }
+    guard let videoUrl = currentVideoUrl, let audioUrl = currentAudioUrl else {
+      return false
+    }
+    audioOnly = enabled
+    let resumeMs = Int(CMTimeGetSeconds(player.currentTime()) * 1000)
+    let wasPlaying = desiredPlaying
+    pendingSeekMs = resumeMs > 0 ? resumeMs : pendingSeekMs
+    desiredPlaying = wasPlaying
+    ready = false
+    completed = false
+    failure = nil
+    open(videoUrl: videoUrl, audioUrl: audioUrl)
+    emit(force: true)
+    return true
+  }
 
   func setPlaying(_ playing: Bool) {
     HlsBridge.trace("setPlaying \(playing) ready=\(ready)")
