@@ -405,6 +405,12 @@ final class HdrVideoSession: NSObject {
     pendingSeekMs = startMs > 0 ? startMs : nil
     layer = AVPlayerLayer(player: player)
     layer.videoGravity = .resizeAspect
+    // This item is served from a loopback bridge that a receiver on the network
+    // cannot reach. Leaving external playback at its default means AirPlay
+    // video is *attempted* and then fails with a picture-less receiver, which
+    // looks like a bug in playback. Refusing it explicitly, while keeping audio
+    // route changes working, is the honest capability statement.
+    player.allowsExternalPlayback = false
     if #available(iOS 17.0, *) {
       // A request to the compositor, not proof of HDR. describe() reports the
       // actual format description separately.

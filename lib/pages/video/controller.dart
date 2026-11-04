@@ -26,6 +26,7 @@ import 'package:PiliPlus/models/common/video/source_type.dart';
 import 'package:PiliPlus/models/common/video/video_decode_type.dart';
 import 'package:PiliPlus/models/common/video/video_type.dart';
 import 'package:PiliPlus/models/video/play/url.dart';
+import 'package:PiliPlus/plugin/pl_player/models/remote_playback.dart';
 import 'package:PiliPlus/plugin/pl_player/models/selected_rendition.dart';
 import 'package:PiliPlus/models_new/download/bili_download_entry_info.dart';
 import 'package:PiliPlus/models_new/media_list/media_list.dart';
@@ -149,6 +150,15 @@ class VideoDetailController extends GetxController
   /// What the native layer reports it is presenting, for the UI to state
   /// honestly whether the picture is HDR.
   final Rxn<HdrPlaybackInfo> hdrPlaybackInfo = Rxn<HdrPlaybackInfo>();
+
+  /// What remote playback this source can actually support.
+  ///
+  /// The native path serves HLS from a loopback bridge, so a receiver cannot
+  /// reach it. Saying so is the difference between "AirPlay is not offered" and
+  /// "AirPlay silently fails".
+  RemotePlaybackCapability get remotePlayback => RemotePlaybackCapability.forSource(
+    loopback: nativeHdrUrl.value != null,
+  );
 
   /// Why the last selection is not exactly what was asked for, or null.
   ///

@@ -851,6 +851,9 @@ class HeaderControlState extends State<HeaderControl>
           ),
           row('音频', info?.audio),
           row('媒体适配', info?.source),
+          row('AirPlay 视频', detail.remotePlayback.videoMirroring ? '可用' : '不可用'),
+          if (!detail.remotePlayback.videoMirroring)
+            row('远程播放', detail.remotePlayback.reason),
           if (fallback != null) row('回退原因', fallback.message),
         ];
         return AlertDialog(
