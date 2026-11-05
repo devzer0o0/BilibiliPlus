@@ -163,6 +163,8 @@ class AiRecommendationPipeline {
     Map<String, int> lastShownAtMs = const {},
     void Function()? onLateRankingReady,
     bool cacheOnly = false,
+    AiRecommendSettings? settingsOverride,
+    bool waitForAi = false,
   }) {
     final features = featuresOf(models, source);
     return rankFeatures(
@@ -175,6 +177,8 @@ class AiRecommendationPipeline {
       lastShownAtMs: lastShownAtMs,
       onLateRankingReady: onLateRankingReady,
       cacheOnly: cacheOnly,
+      settingsOverride: settingsOverride,
+      waitForAi: waitForAi,
     );
   }
 
@@ -188,9 +192,11 @@ class AiRecommendationPipeline {
     Map<String, int> lastShownAtMs = const {},
     void Function()? onLateRankingReady,
     bool cacheOnly = false,
+    AiRecommendSettings? settingsOverride,
+    bool waitForAi = false,
   }) async {
     final started = clock();
-    final settings = await settingsLoader();
+    final settings = settingsOverride ?? await settingsLoader();
     final deduped = _dedupe(features);
     if (!settings.enabled) {
       return AiRankedPage(
@@ -306,9 +312,10 @@ class AiRecommendationPipeline {
       final maxBatches = settings.maxBatchesPerRefresh;
       final interests = _interestRefs(settings, profile, positive: true);
       final avoid = _interestRefs(settings, profile, positive: false);
-      final deadline = started.add(
-        Duration(milliseconds: settings.firstPaintBudgetMs),
-      );
+      final budgetMs = waitForAi
+          ? settings.requestTimeoutMs + 2000
+          : settings.firstPaintBudgetMs;
+      final deadline = started.add(Duration(milliseconds: budgetMs));
       var failures = 0;
 
       for (var batch = 0; batch < maxBatches; batch++) {

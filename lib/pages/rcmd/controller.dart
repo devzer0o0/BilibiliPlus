@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/ai_recommend/ai_card_actions.dart';
@@ -16,6 +18,24 @@ import 'package:PiliPlus/utils/shared_video_service.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
+
+class _PreparedAiPage {
+  const _PreparedAiPage({
+    required this.cursor,
+    required this.models,
+    required this.page,
+    required this.signature,
+    required this.accountScope,
+    required this.source,
+  });
+
+  final int cursor;
+  final List<BaseRcmdVideoItemModel> models;
+  final AiRankedPage page;
+  final String signature;
+  final String accountScope;
+  final String source;
+}
 
 class RcmdController extends CommonListController {
   late bool enableSaveLastData = Pref.enableSaveLastData;
@@ -37,6 +57,9 @@ class RcmdController extends CommonListController {
   final Set<String> _seenBvids = {};
   final Map<String, BaseRcmdVideoItemModel> _modelsByBvid = {};
   final List<BaseRcmdVideoItemModel> _allCandidates = [];
+  _PreparedAiPage? _preparedAi;
+  bool _preparingAi = false;
+  int _prefetchEpoch = 0;
 
   bool get aiEnabled {
     try {
@@ -150,6 +173,48 @@ class RcmdController extends CommonListController {
     _seenBvids.clear();
     _allCandidates.clear();
 
+    final source = appRcmd ? 'app' : 'web';
+    final accountScope = _ai.recommendScope;
+    final signature = settings.toJson();
+    final prepared = _preparedAi;
+    _preparedAi = null;
+
+    // A page that was fetched and scored by the background worker. The
+    // refresh itself performs no model request; it only hands over the
+    // already-ranked result.
+    if (prepared != null &&
+        prepared.signature == signature &&
+        prepared.accountScope == accountScope &&
+        prepared.source == source &&
+        prepared.cursor > 0) {
+      page = prepared.cursor;
+      _allCandidates.addAll(prepared.models);
+      for (final model in prepared.models) {
+        final bvid = model.bvid;
+        if (bvid != null && bvid.isNotEmpty) {
+          _seenBvids.add(bvid);
+          _modelsByBvid[bvid] = model;
+        }
+      }
+      for (final feature in AiRecommendationPipeline.featuresOf(
+        prepared.models,
+        source,
+      )) {
+        _featuresByBvid[feature.bvid] = feature;
+      }
+      aiPage.value = prepared.page;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final display = <BaseRcmdVideoItemModel>[];
+      for (final item in prepared.page.items) {
+        final model = _modelsByBvid[item.features.bvid];
+        if (model == null) continue;
+        display.add(model);
+        _lastShownAtMs[item.features.bvid] = now;
+      }
+      _scheduleAiPrefetch();
+      return Success<List<BaseRcmdVideoItemModel>>(display);
+    }
+
     // Strict mode needs enough candidates before it can filter; preference
     // mode keeps the existing six-card top-up path and one upstream page here.
     final pages = settings.mode == AiRecommendMode.strict ? 3 : 1;
@@ -195,27 +260,23 @@ class RcmdController extends CommonListController {
     }
     _allCandidates.addAll(merged);
 
+    // No prepared page yet. Apply only scores that are already cached: the
+    // refresh must not start a model request; the worker prepares the next
+    // page in the background.
     final ranked = await _ai.pipeline.rankPage(
       models: merged,
-      source: appRcmd ? 'app' : 'web',
-      accountScope: _ai.recommendScope,
+      source: source,
+      accountScope: accountScope,
       token: token,
       isCurrent: () => _aiSession.isCurrent(token),
       lastShownAtMs: _lastShownAtMs,
-      onLateRankingReady: () {
-        aiNewRankingReady.value = true;
-      },
+      cacheOnly: true,
     );
     if (!_aiSession.isCurrent(token)) {
-      // A refresh, keyword change, account switch or dispose happened while
-      // the model was thinking. Return the last known state, never stale cards.
       return const Success<List<BaseRcmdVideoItemModel>>([]);
     }
     aiPage.value = ranked;
-    for (final feature in AiRecommendationPipeline.featuresOf(
-      merged,
-      appRcmd ? 'app' : 'web',
-    )) {
+    for (final feature in AiRecommendationPipeline.featuresOf(merged, source)) {
       _featuresByBvid[feature.bvid] = feature;
     }
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -226,10 +287,89 @@ class RcmdController extends CommonListController {
       models.add(model);
       _lastShownAtMs[item.features.bvid] = now;
     }
+    _scheduleAiPrefetch();
     return Success<List<BaseRcmdVideoItemModel>>(models);
   }
 
+  /// Fetches and scores the next page in the background. The result is held
+  /// in memory until the next refresh consumes it. A refresh never waits for
+  /// this work and never starts a model request itself.
+  void _scheduleAiPrefetch() {
+    if (!aiEnabled || _preparingAi) return;
+    final settings = _ai.settings;
+    final source = appRcmd ? 'app' : 'web';
+    final accountScope = _ai.recommendScope;
+    final signature = settings.toJson();
+    final startCursor = page + 1;
+    final epoch = _prefetchEpoch;
+    _preparingAi = true;
+    unawaited(() async {
+      var lastCursor = startCursor;
+      try {
+        final pages = settings.mode == AiRecommendMode.strict ? 3 : 1;
+        final models = <BaseRcmdVideoItemModel>[];
+        final seen = <String>{};
+        for (var i = 0; i < pages; i++) {
+          final cursor = startCursor + i;
+          final res = await _fetchUpstream(cursor);
+          if (res is! Success) break;
+          final list =
+              (res.response as List?)?.cast<BaseRcmdVideoItemModel>() ??
+              const <BaseRcmdVideoItemModel>[];
+          if (list.isEmpty) break;
+          lastCursor = cursor;
+          for (final item in list) {
+            final bvid = item.bvid;
+            if (bvid != null && bvid.isNotEmpty && !seen.add(bvid)) {
+              continue;
+            }
+            models.add(item);
+          }
+          if (list.length < 20) break;
+        }
+        if (models.isEmpty || epoch != _prefetchEpoch) return;
+
+        final prefetchSettings = settings.copyWith(
+          firstPaintBudgetMs: 30000,
+          requestTimeoutMs: 30000,
+          maxBatchesPerRefresh: 1,
+        );
+        final ranked = await _ai.pipeline.rankPage(
+          models: models,
+          source: source,
+          accountScope: accountScope,
+          token: RecommendationToken(0),
+          isCurrent: () => epoch == _prefetchEpoch,
+          settingsOverride: prefetchSettings,
+          waitForAi: true,
+        );
+        if (epoch != _prefetchEpoch) return;
+        if (ranked.freshScores == 0 && ranked.cacheHits == 0) return;
+        if (signature != _ai.settings.toJson()) return;
+        if (source != (appRcmd ? 'app' : 'web') ||
+            accountScope != _ai.recommendScope) {
+          return;
+        }
+        _preparedAi = _PreparedAiPage(
+          cursor: lastCursor,
+          models: models,
+          page: ranked,
+          signature: signature,
+          accountScope: accountScope,
+          source: source,
+        );
+      } catch (_) {
+        // Background best effort; the next refresh falls back to local rules.
+      } finally {
+        _preparingAi = false;
+      }
+    }());
+  }
+
   Future<LoadingState> _loadMoreWithAi() async {
+    if (_preparedAi != null && _preparedAi!.cursor <= page + 1) {
+      _preparedAi = null;
+    }
     final settings = _ai.settings;
     final token = _aiToken;
     if (token == null) return _loadMoreWithoutAi();
@@ -418,6 +558,7 @@ class RcmdController extends CommonListController {
 
   @override
   void onClose() {
+    _prefetchEpoch++;
     _aiSession.invalidate();
     super.onClose();
   }
