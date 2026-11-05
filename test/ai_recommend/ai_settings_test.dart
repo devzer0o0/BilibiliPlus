@@ -51,6 +51,13 @@ void main() {
     expect(s.wantTags, isEmpty);
   });
 
+  test('first paint budget clamps to the measured minimum', () {
+    final old = AiRecommendSettings.fromMap({'firstPaintBudgetMs': 800});
+    expect(old.firstPaintBudgetMs, 2000);
+    final tooLong = AiRecommendSettings.fromMap({'firstPaintBudgetMs': 6000});
+    expect(tooLong.firstPaintBudgetMs, 5000);
+  });
+
   test('private HTTP opt-in is explicit and persisted', () {
     expect(AiRecommendSettings.defaults.allowInsecureHttp, isFalse);
     final parsed = AiRecommendSettings.fromMap({'allowInsecureHttp': true});

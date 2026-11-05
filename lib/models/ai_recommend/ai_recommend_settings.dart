@@ -50,7 +50,7 @@ class AiRecommendSettings {
     this.batchSize = 20,
     this.maxBatchesPerRefresh = 2,
     this.requestTimeoutMs = 6000,
-    this.firstPaintBudgetMs = 800,
+    this.firstPaintBudgetMs = 2000,
     this.jsonMode = true,
     this.allowInsecureHttp = false,
   });
@@ -173,7 +173,11 @@ class AiRecommendSettings {
       batchSize: intIn('batchSize', 20, 5, 40),
       maxBatchesPerRefresh: intIn('maxBatchesPerRefresh', 2, 1, 3),
       requestTimeoutMs: intIn('requestTimeoutMs', 6000, 2000, 30000),
-      firstPaintBudgetMs: intIn('firstPaintBudgetMs', 800, 0, 5000),
+      // Measured against reasoning-capable models: a cold request commonly
+      // takes 1.5 s, so 800 ms declared every such refresh unavailable before
+      // the (successful) response landed. Two seconds keeps the first paint
+      // honest without hiding a genuinely slow service.
+      firstPaintBudgetMs: intIn('firstPaintBudgetMs', 2000, 2000, 5000),
       jsonMode: pick<bool>('jsonMode', true),
       allowInsecureHttp: pick<bool>('allowInsecureHttp', false),
     );

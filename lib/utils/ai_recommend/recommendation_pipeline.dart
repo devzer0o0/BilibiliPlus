@@ -404,10 +404,10 @@ class AiRecommendationPipeline {
             onLateRankingReady: onLateRankingReady,
           );
           status = scores.isEmpty
-              ? AiFeedStatus.unavailable
+              ? AiFeedStatus.localRules
               : AiFeedStatus.cached;
           statusDetail = scores.isEmpty
-              ? '模型响应较慢，本次先使用本地规则；结果返回后会用于下一次刷新'
+              ? '模型仍在后台评分，先保留本地排序；结果就绪后可刷新使用'
               : '模型响应较慢，本次沿用缓存评分；新结果会用于下一次刷新';
           waitMs += settings.firstPaintBudgetMs;
           break;

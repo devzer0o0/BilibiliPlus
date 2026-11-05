@@ -213,7 +213,7 @@ void main() {
       );
       expect(page.newRankingReady, isTrue);
       expect(page.freshScores, 0);
-      expect(page.status, AiFeedStatus.unavailable);
+      expect(page.status, AiFeedStatus.localRules);
 
       await Future<void>.delayed(const Duration(milliseconds: 500));
       final second = await p.rankFeatures(

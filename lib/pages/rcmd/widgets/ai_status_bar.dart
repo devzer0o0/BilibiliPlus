@@ -19,13 +19,21 @@ class AiStatusBar extends StatelessWidget {
       final theme = Theme.of(context);
       final mode = controller.aiSettings.mode;
       final status = page?.status ?? AiFeedStatus.localRules;
-      final color = switch (status) {
-        AiFeedStatus.active => theme.colorScheme.primary,
-        AiFeedStatus.cached => theme.colorScheme.tertiary,
-        AiFeedStatus.unavailable ||
-        AiFeedStatus.budgetExhausted => theme.colorScheme.error,
-        _ => theme.colorScheme.outline,
-      };
+      final lateReady = controller.aiNewRankingReady.value;
+      final latePending =
+          lateReady &&
+          (status == AiFeedStatus.unavailable ||
+              status == AiFeedStatus.localRules);
+      final statusLabel = latePending ? 'AI 评分已就绪 · 下拉刷新' : status.label;
+      final color = latePending
+          ? theme.colorScheme.primary
+          : switch (status) {
+              AiFeedStatus.active => theme.colorScheme.primary,
+              AiFeedStatus.cached => theme.colorScheme.tertiary,
+              AiFeedStatus.unavailable ||
+              AiFeedStatus.budgetExhausted => theme.colorScheme.error,
+              _ => theme.colorScheme.outline,
+            };
       return Padding(
         padding: const EdgeInsets.fromLTRB(2, 6, 2, 2),
         child: Material(
@@ -44,7 +52,7 @@ class AiStatusBar extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'AI · ' + mode.label + ' · ' + status.label,
+                      'AI · ' + mode.label + ' · ' + statusLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.labelMedium?.copyWith(
