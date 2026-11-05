@@ -203,7 +203,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       _previousObservation = observation;
       // Cumulative counters read twice are not a rate; report the delta and
       // the absolute value, so a stalled playback is visible either way.
-      final delta = previous == null ? observation : observation.deltaFrom(previous);
+      final delta = previous == null
+          ? observation
+          : observation.deltaFrom(previous);
       PlaybackDiagnostics.sample(
         'decoder',
         'hwdec=${observation.hwdecCurrent ?? "unavailable"} '
@@ -371,6 +373,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }
 
   PlaybackRoute _routing = PlaybackRoute.none;
+
   /// True once [dispose] ran. Reads the route as `disposed` afterwards.
   bool get isDisposed => _disposed;
 
@@ -430,8 +433,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   @visibleForTesting
   PlaybackBackend Function(int generation, String sessionId)
-  get debugNativeBackendFactory => (generation, sessionId) =>
-      nativeBackendOverride!(generation, sessionId);
+  get debugNativeBackendFactory =>
+      (generation, sessionId) => nativeBackendOverride!(generation, sessionId);
 
   @visibleForTesting
   void debugAdoptNativeHost(NativeSessionHost host) => _nativeHost = host;
@@ -457,13 +460,23 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     if (next.buffering != previous.buffering) {
       isBuffering.value = next.buffering;
     }
-    if ((next.playing || next.completed) != (previous.playing || previous.completed) &&
+    if ((next.playing || next.completed) !=
+            (previous.playing || previous.completed) &&
         notifyStatus) {
       playerStatus = next.completed
           ? .completed
           : (next.playing ? .playing : .paused);
       for (final listener in _statusListeners) {
         listener(playerStatus);
+      }
+    }
+    for (final listener in _snapshotListeners) {
+      try {
+        listener(next);
+      } catch (e) {
+        // A business hook must never break playback. Local learning is one of
+        // those hooks.
+        if (kDebugMode) debugPrint('snapshot listener failed: $e');
       }
     }
     _updatePlaybackState(debugLabel: debugLabel);
@@ -557,10 +570,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   /// wrong for whichever backend is active, so they are chosen by route rather
   /// than both being offered.
   NativePipCoordinator? _nativePip;
-  NativePipCoordinator get nativePip =>
-      _nativePip ??= NativePipCoordinator();
-  ValueListenable<NativePipStatus> get nativePipStatus =>
-      nativePip.status;
+  NativePipCoordinator get nativePip => _nativePip ??= NativePipCoordinator();
+  ValueListenable<NativePipStatus> get nativePipStatus => nativePip.status;
 
   bool get _isNativeActive => route.isNative;
 
@@ -576,8 +587,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     route: route,
   );
 
-  bool get supportsMpvCommands =>
-      route.isMpv && _videoPlayerController != null;
+  bool get supportsMpvCommands => route.isMpv && _videoPlayerController != null;
   bool get supportsShader => capabilities.shader;
   bool get supportsTextureScreenshot => capabilities.textureScreenshot;
   bool get supportsMpvVolume => capabilities.mixerVolume;
@@ -607,7 +617,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _nativeEvents?.cancel();
     _nativeEvents = null;
     await _nativePip?.bind(request.sourceKey);
-    playerStatus = request.autoPlay ? PlayerStatus.playing : PlayerStatus.paused;
+    playerStatus = request.autoPlay
+        ? PlayerStatus.playing
+        : PlayerStatus.paused;
     await host.open(
       generation: generation,
       sessionId: request.sourceKey,
@@ -698,9 +710,11 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         });
       } catch (err) {
         if (kDebugMode) debugPrint('native setAudioOnly failed: $err');
-        _toast(err is PlatformException && err.code == 'audio_only_unsupported'
-            ? '该视频没有独立音轨，无法只听音频'
-            : '听视频切换失败');
+        _toast(
+          err is PlatformException && err.code == 'audio_only_unsupported'
+              ? '该视频没有独立音轨，无法只听音频'
+              : '听视频切换失败',
+        );
         return false;
       }
       onlyPlayAudio.value = enabled;
@@ -1055,6 +1069,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       : Pref.defaultVideoQa;
   late int cacheAudioQa = Pref.defaultAudioQa;
   bool enableHeart = true;
+
   /// What this player asks mpv for.
   ///
   /// Never null. media_kit's native video controller substitutes `auto` when the
@@ -1383,8 +1398,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       // platform view instead of rebuilding it.
       final generation = _generations.beginSourceChange();
       final key =
-          sourceKey ??
-          'native:${_bvid ?? ''}:${this.cid ?? 0}:$generation';
+          sourceKey ?? 'native:${_bvid ?? ''}:${this.cid ?? 0}:$generation';
       // The previous session's decode evidence does not describe this source:
       // a title that decoded in hardware says nothing about the codec, profile
       // or resolution of the one about to open.
@@ -1393,7 +1407,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       if (!useNative) {
         // Leaving the native path has to tear it down before mpv opens, or the
         // old AVPlayer keeps decoding underneath the new picture.
-        if (_nativeHost != null || _snapshot.backend == PlaybackBackendKind.native) {
+        if (_nativeHost != null ||
+            _snapshot.backend == PlaybackBackendKind.native) {
           await closeNativeHdr();
           _snapshot = const PlaybackSnapshot();
         }
@@ -1496,6 +1511,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   late final isAnim = _pgcType == 1 || _pgcType == 4;
   late final Rx<SuperResolutionType> superResolutionType =
       (isAnim ? Pref.superResolutionType : SuperResolutionType.disable).obs;
+
   /// Applies a super-resolution preset, or explains why it cannot be applied.
   ///
   /// The order matters and used to be wrong: the preference was written first,
@@ -1749,6 +1765,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   List<StreamSubscription>? _subscriptions;
   final Set<ValueChanged<Duration>> _positionListeners = {};
+  final Set<ValueChanged<PlaybackSnapshot>> _snapshotListeners = {};
   final Set<ValueChanged<PlayerStatus>> _statusListeners = {};
 
   Timer? _wakeLockTimer;
@@ -1796,9 +1813,13 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       return;
     }
     final wantsWakeLock =
-        _isForeground && isPlayerPageForeground && !onlyPlayAudio.value &&
+        _isForeground &&
+        isPlayerPageForeground &&
+        !onlyPlayAudio.value &&
         _snapshot.backend != PlaybackBackendKind.none &&
-        _snapshot.playing && !_snapshot.buffering && !_snapshot.completed;
+        _snapshot.playing &&
+        !_snapshot.buffering &&
+        !_snapshot.completed;
     if (wantsWakeLock) {
       _enableWakeLock();
     } else {
@@ -2541,6 +2562,17 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   void removePositionListener(ValueChanged<Duration> listener) =>
       _positionListeners.remove(listener);
 
+  /// Every snapshot from either backend passes through [applySnapshot], so
+  /// this is the one hook local watch learning needs. It is deliberately
+  /// separate from position listeners, which miss pause/buffer/completion.
+  void addSnapshotListener(ValueChanged<PlaybackSnapshot> listener) {
+    _snapshotListeners.add(listener);
+  }
+
+  void removeSnapshotListener(ValueChanged<PlaybackSnapshot> listener) {
+    _snapshotListeners.remove(listener);
+  }
+
   void addStatusLister(ValueChanged<PlayerStatus> listener) {
     if (_playerCount == 0) return;
     _statusListeners.add(listener);
@@ -2692,6 +2724,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     closeNativeHdr();
     _positionListeners.clear();
     _statusListeners.clear();
+    _snapshotListeners.clear();
     _stopWakeLockTimer();
     _disableWakeLock();
     _nativePip?.dispose();

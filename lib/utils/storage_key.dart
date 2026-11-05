@@ -50,6 +50,8 @@ abstract final class SettingBoxKey {
       appRcmd = 'appRcmd',
       enableSaveLastData = 'enableSaveLastData',
       minDurationForRcmd = 'minDurationForRcmd',
+      aiRecommendSettings = 'aiRecommendSettings',
+      s3BackupSettings = 's3BackupSettings',
       minPlayForRcmd = 'minPlayForRcmd',
       minLikeRatioForRecommend = 'minLikeRatioForRecommend',
       exemptFilterForFollowed = 'exemptFilterForFollowed',

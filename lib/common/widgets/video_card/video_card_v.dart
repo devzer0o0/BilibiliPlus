@@ -5,6 +5,7 @@ import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/stat/stat.dart';
 import 'package:PiliPlus/common/widgets/video_popup_menu.dart';
 import 'package:PiliPlus/http/search.dart';
+import 'package:PiliPlus/models/ai_recommend/ai_card_actions.dart';
 import 'package:PiliPlus/models/home/rcmd/result.dart';
 import 'package:PiliPlus/models/model_rec_video_item.dart';
 import 'package:PiliPlus/models_new/video/video_detail/dimension.dart';
@@ -23,11 +24,13 @@ import 'package:material_ui/material_ui.dart';
 class VideoCardV extends StatelessWidget {
   final BaseRcmdVideoItemModel videoItem;
   final VoidCallback? onRemove;
+  final AiCardActions? aiActions;
 
   const VideoCardV({
     super.key,
     required this.videoItem,
     this.onRemove,
+    this.aiActions,
   });
 
   Future<void> onPushDetail() async {
@@ -143,6 +146,7 @@ class VideoCardV extends StatelessWidget {
               iconSize: 17,
               videoItem: videoItem,
               onRemove: onRemove,
+              aiActions: aiActions,
             ),
           ),
       ],
@@ -213,6 +217,12 @@ class VideoCardV extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (aiActions != null)
+                  const Icon(
+                    Icons.auto_awesome,
+                    size: 12,
+                    semanticLabel: 'AI 推荐',
+                  ),
                 if (videoItem.goto == 'av') const SizedBox(width: 10),
               ],
             ),

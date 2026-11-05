@@ -1,6 +1,7 @@
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
 import 'package:PiliPlus/http/user.dart';
 import 'package:PiliPlus/http/video.dart';
+import 'package:PiliPlus/models/ai_recommend/ai_card_actions.dart';
 import 'package:PiliPlus/models/home/rcmd/result.dart';
 import 'package:PiliPlus/models/model_video.dart';
 import 'package:PiliPlus/models_new/space/space_archive/item.dart';
@@ -28,12 +29,14 @@ class VideoPopupMenu extends StatelessWidget {
   final double menuItemHeight;
   final BaseSimpleVideoItemModel videoItem;
   final VoidCallback? onRemove;
+  final AiCardActions? aiActions;
 
   const VideoPopupMenu({
     super.key,
     required this.iconSize,
     required this.videoItem,
     this.onRemove,
+    this.aiActions,
     this.menuItemHeight = 45,
   });
 
@@ -311,6 +314,50 @@ class VideoPopupMenu extends StatelessWidget {
                         );
                       },
                     ),
+                  ),
+                ],
+                if (aiActions != null) ...[
+                  _VideoCustomAction(
+                    '为什么推荐',
+                    const Icon(Icons.auto_awesome, size: 16),
+                    () => showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('为什么推荐'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(aiActions!.reason),
+                            const SizedBox(height: 8),
+                            const Text(
+                              '依据是标题、简介、分类、时长等已有信息；没有读取视频字幕、评论或画面。',
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          FilledButton(
+                            onPressed: Get.back,
+                            child: const Text('好'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  _VideoCustomAction(
+                    '多看一些',
+                    const Icon(MdiIcons.thumbUpOutline, size: 16),
+                    aiActions!.onMore,
+                  ),
+                  _VideoCustomAction(
+                    '少看一些',
+                    const Icon(MdiIcons.thumbDownOutline, size: 16),
+                    aiActions!.onLess,
+                  ),
+                  _VideoCustomAction(
+                    '撤销最近反馈',
+                    const Icon(MdiIcons.undo, size: 16),
+                    aiActions!.onUndo,
                   ),
                 ],
                 _VideoCustomAction(

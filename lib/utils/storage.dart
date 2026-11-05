@@ -22,6 +22,12 @@ abstract final class GStorage {
   static late final Box<dynamic> setting;
   static late final Box<dynamic> video;
   static late final Box<int> watchProgress;
+  static late final Box<dynamic> aiProfile;
+  static late final Box<dynamic> aiScores;
+  // Backup history, restore journal and rollback snapshots. Deliberately kept
+  // out of [clear]: an interrupted restore must still be recoverable after a
+  // user-initiated data reset.
+  static late final Box<dynamic> backup;
   static late final Box<Uint8List>? reply;
 
   static Future<void> init() async {
@@ -54,6 +60,11 @@ abstract final class GStorage {
       ).then((res) => historyWord = res),
       // 视频设置
       Hive.openBox('video').then((res) => video = res),
+      // Local AI profile and derived score cache. Both are account-scoped by
+      // key; neither is required for the app to start.
+      Hive.openBox('aiProfile').then((res) => aiProfile = res),
+      Hive.openBox('aiScores').then((res) => aiScores = res),
+      Hive.openBox('backup').then((res) => backup = res),
       Accounts.init(),
       Hive.openBox<int>(
         'watchProgress',
@@ -117,6 +128,9 @@ abstract final class GStorage {
       video.compact(),
       Accounts.account.compact(),
       watchProgress.compact(),
+      aiProfile.compact(),
+      aiScores.compact(),
+      backup.compact(),
       ?reply?.compact(),
     ]);
   }
@@ -130,6 +144,9 @@ abstract final class GStorage {
       video.close(),
       Accounts.account.close(),
       watchProgress.close(),
+      aiProfile.close(),
+      aiScores.close(),
+      backup.close(),
       ?reply?.close(),
     ]);
   }
@@ -143,6 +160,8 @@ abstract final class GStorage {
       video.clear(),
       Accounts.clear(),
       watchProgress.clear(),
+      aiProfile.clear(),
+      aiScores.clear(),
       ?reply?.clear(),
     ]);
   }

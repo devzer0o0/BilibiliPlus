@@ -6,6 +6,7 @@ import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
 import 'package:PiliPlus/common/widgets/video_card/video_card_v.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/pages/rcmd/controller.dart';
+import 'package:PiliPlus/pages/rcmd/widgets/ai_status_bar.dart';
 import 'package:PiliPlus/pages/rcmd/widgets/shared_video_strip.dart';
 import 'package:PiliPlus/utils/grid.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
@@ -40,6 +41,9 @@ class _RcmdPageState extends State<RcmdPage>
           controller: controller.scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
+            SliverToBoxAdapter(
+              child: AiStatusBar(controller: controller),
+            ),
             // Shared videos sit above the grid and are not part of its six.
             Obx(() {
               final shared = controller.sharedVideos;
@@ -114,6 +118,11 @@ class _RcmdPageState extends State<RcmdPage>
                         : index;
                     return VideoCardV(
                       videoItem: response[actualIndex],
+                      aiActions: controller.aiEnabled
+                          ? controller.aiCardActionsFor(
+                              response[actualIndex].bvid ?? '',
+                            )
+                          : null,
                       onRemove: () {
                         if (controller.lastRefreshAt != null &&
                             actualIndex < controller.lastRefreshAt!) {
@@ -128,6 +137,11 @@ class _RcmdPageState extends State<RcmdPage>
                   } else {
                     return VideoCardV(
                       videoItem: response[index],
+                      aiActions: controller.aiEnabled
+                          ? controller.aiCardActionsFor(
+                              response[index].bvid ?? '',
+                            )
+                          : null,
                       onRemove: () => controller.loadingState
                         ..value.data!.removeAt(index)
                         ..refresh(),
@@ -138,12 +152,56 @@ class _RcmdPageState extends State<RcmdPage>
                     ? response.length + 1
                     : response.length,
               )
+            : controller.aiEnabled
+            ? _buildAiEmpty(colorScheme)
             : HttpError(onReload: controller.onReload),
       Error(:final errMsg) => HttpError(
         errMsg: errMsg,
         onReload: controller.onReload,
       ),
     };
+  }
+
+  Widget _buildAiEmpty(ColorScheme colorScheme) {
+    final page = controller.aiPage.value;
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.auto_awesome_outlined,
+                size: 40,
+                color: colorScheme.outline,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                page?.status == null ? '正在准备 AI 推荐' : '暂时没有符合条件的内容',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                page?.statusDetail.isNotEmpty == true
+                    ? page!.statusDetail
+                    : '可以放宽严格精选阈值、调整少看词，或稍后再刷新。',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.outline,
+                ),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.tonal(
+                onPressed: controller.openAiSettings,
+                child: const Text('调整筛选条件'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget get _buildSkeleton => SliverGrid(

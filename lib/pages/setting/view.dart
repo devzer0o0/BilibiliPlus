@@ -5,6 +5,7 @@ import 'package:PiliPlus/common/widgets/view_safe_area.dart';
 import 'package:PiliPlus/http/login.dart';
 import 'package:PiliPlus/models/common/setting_type.dart';
 import 'package:PiliPlus/pages/about/view.dart';
+import 'package:PiliPlus/pages/backup/s3_backup_page.dart';
 import 'package:PiliPlus/pages/login/controller.dart';
 import 'package:PiliPlus/pages/setting/common_setting.dart';
 import 'package:PiliPlus/pages/setting/widgets/multi_select_dialog.dart';
@@ -182,6 +183,12 @@ class _SettingPageState extends State<SettingPage> {
       padding: EdgeInsets.only(bottom: padding.bottom + 100),
       children: [
         _buildSearchItem(theme),
+        ListTile(
+          onTap: () => Get.to(() => const S3BackupPage()),
+          leading: const Icon(Icons.cloud_upload_outlined),
+          title: Text('S3 兼容备份', style: titleStyle),
+          subtitle: Text('加密、多版本、恢复预览', style: subTitleStyle),
+        ),
         ..._items
             .take(_items.length - 1)
             .map(

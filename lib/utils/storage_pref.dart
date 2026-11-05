@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:PiliPlus/common/widgets/gesture/horizontal_drag_gesture_recognizer.dart'
     show deviceTouchSlop;
 import 'package:PiliPlus/common/widgets/pair.dart';
 import 'package:PiliPlus/http/constants.dart';
+import 'package:PiliPlus/models/ai_recommend/ai_recommend_settings.dart';
 import 'package:PiliPlus/models/common/bar_hide_type.dart';
 import 'package:PiliPlus/models/common/dynamic/dynamic_badge_mode.dart';
 import 'package:PiliPlus/models/common/dynamic/dynamics_type.dart';
@@ -317,6 +319,27 @@ abstract final class Pref {
 
   static String get banWordForRecommend =>
       _setting.get(SettingBoxKey.banWordForRecommend, defaultValue: '');
+
+  /// AI recommendation settings. Stored as one validated JSON object so a
+  /// partial write cannot leave contradictory fields behind. Secrets are not
+  /// in this object.
+  static AiRecommendSettings get aiRecommendSettings {
+    final raw = _setting.get(SettingBoxKey.aiRecommendSettings);
+    if (raw is String) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          return AiRecommendSettings.fromMap(decoded);
+        }
+      } catch (_) {
+        // Corrupt settings must not prevent the feed from loading.
+      }
+    }
+    return AiRecommendSettings.defaults;
+  }
+
+  static Future<void> saveAiRecommendSettings(AiRecommendSettings value) =>
+      _setting.put(SettingBoxKey.aiRecommendSettings, value.toJson());
 
   static String get banWordForReply =>
       _setting.get(SettingBoxKey.banWordForReply, defaultValue: '');

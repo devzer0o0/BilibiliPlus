@@ -14,6 +14,20 @@ abstract final class RecommendFilter {
   static bool enableFilter = rcmdRegExp.pattern.isNotEmpty;
 
   // (web/app)rcmd
+  /// Re-reads the static mirrors after a restore or settings import.
+  ///
+  /// The fields above are intentionally fast to read on every card; a restore
+  /// writes Hive directly and must refresh them or the UI keeps the old rules.
+  static void reload() {
+    minDurationForRcmd = Pref.minDurationForRcmd;
+    minPlayForRcmd = Pref.minPlayForRcmd;
+    minLikeRatioForRecommend = Pref.minLikeRatioForRecommend;
+    exemptFilterForFollowed = Pref.exemptFilterForFollowed;
+    applyFilterToRelatedVideos = Pref.applyFilterToRelatedVideos;
+    rcmdRegExp = RegExp(Pref.banWordForRecommend, caseSensitive: false);
+    enableFilter = rcmdRegExp.pattern.isNotEmpty;
+  }
+
   static bool filterWithExempt(BaseVideoItemModel videoItem) {
     //由于相关视频中没有已关注标签，只能视为非关注视频
     if (videoItem.isFollowed && exemptFilterForFollowed) {

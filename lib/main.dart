@@ -16,6 +16,8 @@ import 'package:PiliPlus/services/account_service.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/services/logger.dart';
 import 'package:PiliPlus/services/service_locator.dart';
+import 'package:PiliPlus/utils/backup/backup_scheduler.dart';
+import 'package:PiliPlus/utils/backup/backup_service.dart';
 import 'package:PiliPlus/utils/cache_manager.dart';
 import 'package:PiliPlus/utils/date_utils.dart';
 import 'package:PiliPlus/utils/desktop/calc_window_position.dart';
@@ -153,6 +155,13 @@ void main() async {
     if (kDebugMode) debugPrint('GStorage init error: $e');
     DeviceUtils.exitApp();
   }
+  // A restore interrupted by a crash must be resolved before any controller
+  // reads the boxes. This runs before Pref.uiScale and the first network task.
+  try {
+    await BackupService.instance.recoverPendingRestore();
+  } catch (e) {
+    if (kDebugMode) debugPrint('restore recovery failed: $e');
+  }
   ScaledWidgetsFlutterBinding.instance.scaleFactor = Pref.uiScale;
   await Future.wait([
     _initDownPath(),
@@ -252,6 +261,7 @@ void main() async {
     );
   } else {
     _markStartup('runApp');
+    BackupScheduler.instance.start();
     runApp(const MyApp());
   }
 

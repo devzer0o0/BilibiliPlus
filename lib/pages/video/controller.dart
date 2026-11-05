@@ -60,6 +60,7 @@ import 'package:PiliPlus/plugin/pl_player/utils/hdr_support.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/hdr_video_surface.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/utils/accounts.dart';
+import 'package:PiliPlus/utils/ai_recommend/ai_watch_service.dart';
 import 'package:PiliPlus/utils/connectivity_utils.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
 import 'package:PiliPlus/utils/extension/nested_scroll_ext.dart';
@@ -183,16 +184,16 @@ class VideoDetailController extends GetxController
   /// The native path serves HLS from a loopback bridge, so a receiver cannot
   /// reach it. Saying so is the difference between "AirPlay is not offered" and
   /// "AirPlay silently fails".
-  RemotePlaybackCapability get remotePlayback => RemotePlaybackCapability.forSource(
-    loopback: nativeHdrUrl.value != null,
-  );
+  RemotePlaybackCapability get remotePlayback =>
+      RemotePlaybackCapability.forSource(
+        loopback: nativeHdrUrl.value != null,
+      );
 
   /// Why the last selection is not exactly what was asked for, or null.
   ///
   /// Shown once per switch. A silent downgrade is the failure mode this exists
   /// to prevent: "requested 4K, got 1080P" must have a sentence attached.
-  final Rxn<RenditionFallback> lastRenditionFallback =
-      Rxn<RenditionFallback>();
+  final Rxn<RenditionFallback> lastRenditionFallback = Rxn<RenditionFallback>();
 
   /// Identity of the rendition the native session was opened with. Rotation,
   /// full screen and layout changes must not alter it, or they would restart
@@ -234,6 +235,9 @@ class VideoDetailController extends GetxController
   bool get setSystemBrightness => plPlayerController.setSystemBrightness;
   bool get removeSafeArea => plPlayerController.removeSafeArea;
   double get uiScale => plPlayerController.uiScale;
+
+  Worker? _aiDetailWorker;
+  Worker? _aiCidWorker;
 
   late VideoItem firstVideo;
   String? videoUrl;
@@ -515,8 +519,9 @@ class VideoDetailController extends GetxController
   void onInit() {
     super.onInit();
     // Watches for AV1 falling back to the CPU; see [_onAv1SoftwareSustained].
-    plPlayerController.av1SoftwareSustained
-        .addListener(_onAv1SoftwareSustained);
+    plPlayerController.av1SoftwareSustained.addListener(
+      _onAv1SoftwareSustained,
+    );
     args = Get.arguments;
     videoType = args['videoType'];
     if (videoType == VideoType.pgc) {
@@ -534,6 +539,22 @@ class VideoDetailController extends GetxController
     heroTag = args['heroTag'];
     cover = RxString(args['cover'] ?? '');
     isVertical = RxBool(args['isVertical'] ?? false);
+
+    if (videoType == VideoType.ugc && Pref.aiRecommendSettings.enabled) {
+      // Both mpv and native HDR publish through the player's snapshot hook.
+      AiWatchService.instance.attach(plPlayerController);
+      _syncAiContext();
+      try {
+        _aiDetailWorker = ever(
+          ugcIntroCtr.videoDetail,
+          (_) => _syncAiContext(),
+        );
+        _aiCidWorker = ever(cid, (_) => _syncAiContext());
+      } catch (_) {
+        // The intro controller may not be registered yet; the first snapshot
+        // still works without a title, and playback must not be affected.
+      }
+    }
 
     sourceType = args['sourceType'] ?? SourceType.normal;
     isFileSource = sourceType == SourceType.file;
@@ -1599,14 +1620,38 @@ class VideoDetailController extends GetxController
     }
   }
 
+  void _syncAiContext() {
+    String? title;
+    int? ownerMid;
+    try {
+      final detail = ugcIntroCtr.videoDetail.value;
+      title = detail.title;
+      ownerMid = detail.owner?.mid;
+    } catch (_) {
+      // PGC or an intro controller that is not ready.
+    }
+    AiWatchService.instance.setContext(
+      bvid: bvid,
+      cid: cid.value,
+      title: title,
+      ownerMid: ownerMid,
+    );
+  }
+
   @override
   void onClose() {
+    _aiDetailWorker?.dispose();
+    _aiDetailWorker = null;
+    _aiCidWorker?.dispose();
+    _aiCidWorker = null;
+    AiWatchService.instance.finish();
     cid.close();
     if (isFileSource) {
       cacheLocalProgress();
     }
-    plPlayerController.av1SoftwareSustained
-        .removeListener(_onAv1SoftwareSustained);
+    plPlayerController.av1SoftwareSustained.removeListener(
+      _onAv1SoftwareSustained,
+    );
     introScrollCtr?.dispose();
     introScrollCtr = null;
     tabCtr.dispose();

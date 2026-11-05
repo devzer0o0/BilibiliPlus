@@ -1,13 +1,32 @@
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/pages/rcmd/controller.dart';
+import 'package:PiliPlus/pages/setting/ai_recommend.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
 import 'package:PiliPlus/utils/recommend_filter.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart' hide StatefulBuilder;
 
 List<SettingsModel> get recommendSettings => [
+  NormalModel(
+    title: 'AI 推荐筛选',
+    subtitle: '关键词、观看行为与反馈共同排序；默认关闭',
+    leading: const Icon(Icons.auto_awesome_outlined),
+    getSubtitle: () {
+      final settings = Pref.aiRecommendSettings;
+      if (!settings.enabled) return '未启用';
+      // ignore: prefer_interpolation_to_compose_strings
+      return '已启用 · ' +
+          settings.mode.label +
+          (settings.hasModel ? ' · 已配置模型' : ' · 未配置模型');
+    },
+    onTap: (context, setState) async {
+      await Get.to(() => const AiRecommendSettingsPage());
+      setState();
+    },
+  ),
   const SwitchModel(
     title: '首页使用app端推荐',
     subtitle: '若web端推荐不太符合预期，可尝试切换至app端推荐',
