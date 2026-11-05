@@ -90,6 +90,34 @@ String listXml({bool truncated = false, String? token}) {
 }
 
 void main() {
+  test('private HTTP needs an explicit opt-in; public HTTP never passes', () {
+    const privateHttp = S3BackupConfig(
+      endpoint: 'http://10.0.100.10:9000/',
+      bucket: 'bilibili',
+      region: 'cn-east-1',
+    );
+    expect(privateHttp.validationError(), isNotNull);
+    const allowed = S3BackupConfig(
+      endpoint: 'http://10.0.100.10:9000/',
+      bucket: 'bilibili',
+      region: 'cn-east-1',
+      allowInsecureHttp: true,
+    );
+    expect(allowed.validationError(), isNull);
+    const publicHttp = S3BackupConfig(
+      endpoint: 'http://s3.example.com',
+      bucket: 'bilibili',
+      region: 'cn-east-1',
+      allowInsecureHttp: true,
+    );
+    expect(publicHttp.validationError(), isNotNull);
+    expect(allowed.toMap()['allowInsecureHttp'], isTrue);
+    expect(
+      S3BackupConfig.fromMap(allowed.toMap()).allowInsecureHttp,
+      isTrue,
+    );
+  });
+
   test('lists with URL-encoded keys and pagination token', () async {
     final adapter = FakeAdapter(
       (_) =>

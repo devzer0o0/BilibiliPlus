@@ -6,6 +6,7 @@ import 'package:PiliPlus/models/backup/backup_record.dart';
 import 'package:PiliPlus/models/backup/backup_snapshot.dart';
 import 'package:PiliPlus/utils/backup/backup_registry.dart';
 import 'package:PiliPlus/utils/backup/backup_service.dart';
+import 'package:PiliPlus/utils/security/private_network.dart';
 import 'package:PiliPlus/utils/backup/restore_planner.dart';
 import 'package:PiliPlus/utils/backup/s3_object_store.dart';
 import 'package:flutter/services.dart';
@@ -35,6 +36,7 @@ class _S3BackupPageState extends State<S3BackupPage> {
   final _retain = TextEditingController();
 
   late S3AddressingMode _addressing;
+  late bool _allowInsecureHttp;
   late BackupSelection _selection;
   late bool _autoEnabled;
   late bool _wifiOnly;
@@ -57,6 +59,7 @@ class _S3BackupPageState extends State<S3BackupPage> {
     _interval.text = config.autoIntervalHours.toString();
     _retain.text = config.retainAutoSnapshots.toString();
     _addressing = config.addressing;
+    _allowInsecureHttp = config.allowInsecureHttp;
     _selection = config.selection;
     _autoEnabled = config.autoEnabled;
     _wifiOnly = config.autoWifiOnly;
@@ -103,6 +106,7 @@ class _S3BackupPageState extends State<S3BackupPage> {
     region: _region.text.trim(),
     prefix: _prefix.text.trim(),
     addressing: _addressing,
+    allowInsecureHttp: _allowInsecureHttp,
     timeoutSeconds: int.tryParse(_timeout.text.trim()) ?? 20,
     autoEnabled: _autoEnabled,
     autoWifiOnly: _wifiOnly,
@@ -112,7 +116,36 @@ class _S3BackupPageState extends State<S3BackupPage> {
   );
 
   Future<bool> _save({bool quiet = false}) async {
-    final config = _collectConfig();
+    var config = _collectConfig();
+    final parsed = Uri.tryParse(config.endpoint);
+    if (parsed != null &&
+        parsed.scheme == 'http' &&
+        isPrivateNetworkHost(parsed.host) &&
+        !config.allowInsecureHttp) {
+      final allow = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('允许内网 HTTP？'),
+          content: const Text(
+            '该 S3 地址是私有网络中的明文 HTTP。Access Key、Secret Key 和备份内容会以明文经过这段网络，只应在你信任的局域网中使用。公网地址仍会被拒绝。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(result: false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Get.back(result: true),
+              child: const Text('允许并继续'),
+            ),
+          ],
+        ),
+      );
+      if (allow != true) return false;
+      _allowInsecureHttp = true;
+      if (mounted) setState(() {});
+      config = _collectConfig();
+    }
     final error = config.validationError();
     if (error != null) {
       SmartDialog.showToast(error);
@@ -682,6 +715,14 @@ class _S3BackupPageState extends State<S3BackupPage> {
                   .toList(),
               onChanged: (value) =>
                   setState(() => _addressing = value ?? _addressing),
+            ),
+          ),
+          SwitchListTile(
+            value: _allowInsecureHttp,
+            onChanged: (value) => setState(() => _allowInsecureHttp = value),
+            title: const Text('允许内网 HTTP'),
+            subtitle: const Text(
+              '仅私有网络地址生效；Access/Secret Key 与备份内容会明文传输，公网仍拒绝',
             ),
           ),
           _field(_timeout, '超时（秒）'),
