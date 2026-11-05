@@ -239,6 +239,7 @@ class AiRecommendationPipeline {
       model: settings.model,
       timeoutMs: settings.requestTimeoutMs,
       jsonMode: settings.jsonMode,
+      allowInsecureHttp: settings.allowInsecureHttp,
     );
     for (final feature in deduped) {
       final key = AiScoreCacheKey.build(

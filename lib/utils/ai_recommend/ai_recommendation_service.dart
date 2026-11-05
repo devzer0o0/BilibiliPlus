@@ -130,6 +130,7 @@ class AiRecommendationService {
         model: s.model,
         timeoutMs: s.requestTimeoutMs,
         jsonMode: s.jsonMode,
+        allowInsecureHttp: s.allowInsecureHttp,
       ),
       secrets: secrets,
     );

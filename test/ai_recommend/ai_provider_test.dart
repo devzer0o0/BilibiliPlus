@@ -299,6 +299,42 @@ void main() {
     );
   });
 
+  test('private HTTP needs an explicit opt-in; public HTTP never passes', () {
+    const privateHttp = AiProviderConfig(
+      baseUrl: 'http://10.0.10.102:3001/v1',
+      model: 'm',
+    );
+    expect(
+      () => privateHttp.endpoint,
+      throwsA(isA<AiProviderException>()),
+    );
+
+    const allowed = AiProviderConfig(
+      baseUrl: 'http://10.0.10.102:3001/v1',
+      model: 'm',
+      allowInsecureHttp: true,
+    );
+    expect(
+      allowed.endpoint.toString(),
+      'http://10.0.10.102:3001/v1/chat/completions',
+    );
+
+    const publicHttp = AiProviderConfig(
+      baseUrl: 'http://example.com/v1',
+      model: 'm',
+      allowInsecureHttp: true,
+    );
+    expect(
+      () => publicHttp.endpoint,
+      throwsA(isA<AiProviderException>()),
+    );
+
+    expect(AiProviderConfig.isPrivateHost('192.168.1.2'), isTrue);
+    expect(AiProviderConfig.isPrivateHost('172.20.0.1'), isTrue);
+    expect(AiProviderConfig.isPrivateHost('8.8.8.8'), isFalse);
+    expect(AiProviderConfig.isPrivateHost('fd00::1'), isTrue);
+  });
+
   test('missing API key fails before any request', () async {
     final adapter = FakeAdapter((_) => ResponseBody.fromString('{}', 200));
     final p = OpenAiCompatibleProvider(

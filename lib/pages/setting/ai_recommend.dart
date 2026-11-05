@@ -5,6 +5,7 @@ import 'package:PiliPlus/common/widgets/scaffold/simple_scaffold.dart';
 import 'package:PiliPlus/models/ai_recommend/ai_recommend_settings.dart';
 import 'package:PiliPlus/pages/rcmd/controller.dart';
 import 'package:PiliPlus/pages/setting/ai_profile.dart';
+import 'package:PiliPlus/utils/ai_recommend/ai_provider.dart';
 import 'package:PiliPlus/utils/ai_recommend/ai_recommendation_service.dart';
 import 'package:PiliPlus/utils/security/secret_store.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -34,6 +35,7 @@ class _AiRecommendSettingsPageState extends State<AiRecommendSettingsPage> {
   late bool _useHistory;
   late bool _paused;
   late bool _jsonMode;
+  late bool _allowInsecureHttp;
   late double _exploration;
   late double _threshold;
   late int _retention;
@@ -59,6 +61,7 @@ class _AiRecommendSettingsPageState extends State<AiRecommendSettingsPage> {
     _useHistory = _settings.useWatchHistory;
     _paused = _settings.pausedLearning;
     _jsonMode = _settings.jsonMode;
+    _allowInsecureHttp = _settings.allowInsecureHttp;
     _exploration = _settings.explorationRatio;
     _threshold = _settings.strictThreshold;
     _retention = _settings.profileRetentionDays;
@@ -99,13 +102,46 @@ class _AiRecommendSettingsPageState extends State<AiRecommendSettingsPage> {
     strictThreshold: _threshold,
     profileRetentionDays: _retention,
     jsonMode: _jsonMode,
+    allowInsecureHttp: _allowInsecureHttp,
   );
 
   Future<void> _save({bool quiet = false}) async {
     if (_busy) return;
     setState(() => _busy = true);
-    final next = _collect();
+    var next = _collect();
     final old = _settings;
+    final parsed = Uri.tryParse(next.baseUrl);
+    if (parsed != null &&
+        parsed.scheme == 'http' &&
+        AiProviderConfig.isPrivateHost(parsed.host) &&
+        !next.allowInsecureHttp) {
+      final allow = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('允许内网 HTTP？'),
+          content: const Text(
+            '该地址是私有网络中的明文 HTTP。API Key 会以明文经过这段网络，只应在你信任的局域网中使用。公网地址仍会被拒绝。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(result: false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Get.back(result: true),
+              child: const Text('允许并继续'),
+            ),
+          ],
+        ),
+      );
+      if (allow != true) {
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
+      _allowInsecureHttp = true;
+      next = _collect();
+    }
+    if (!mounted) return;
     final baseChanged =
         old.baseUrl.trim().replaceAll(RegExp(r'/+$'), '') !=
         next.baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
@@ -408,6 +444,15 @@ class _AiRecommendSettingsPageState extends State<AiRecommendSettingsPage> {
                 onChanged: (value) => setState(() => _jsonMode = value),
                 title: const Text('请求 JSON 输出模式'),
                 subtitle: const Text('服务不支持时关闭；客户端始终严格校验返回 JSON'),
+              ),
+              SwitchListTile(
+                value: _allowInsecureHttp,
+                onChanged: (value) =>
+                    setState(() => _allowInsecureHttp = value),
+                title: const Text('允许内网 HTTP'),
+                subtitle: const Text(
+                  '仅对 10/172.16-31/192.168 等私有地址生效；API Key 会明文传输，公网地址仍拒绝',
+                ),
               ),
               ListTile(
                 title: const Text('每日请求预算'),

@@ -52,6 +52,7 @@ class AiRecommendSettings {
     this.requestTimeoutMs = 6000,
     this.firstPaintBudgetMs = 800,
     this.jsonMode = true,
+    this.allowInsecureHttp = false,
   });
 
   static const AiRecommendSettings defaults = AiRecommendSettings();
@@ -94,6 +95,10 @@ class AiRecommendSettings {
   /// Providers that reject it can turn it off; the client still validates
   /// strictly and never trusts the response.
   final bool jsonMode;
+
+  /// Explicit opt-in for an HTTP model server on a private network. The API key
+  /// is sent in clear text on that hop; public HTTP hosts remain rejected.
+  final bool allowInsecureHttp;
 
   bool get hasModel => baseUrl.trim().isNotEmpty && model.trim().isNotEmpty;
 
@@ -170,6 +175,7 @@ class AiRecommendSettings {
       requestTimeoutMs: intIn('requestTimeoutMs', 6000, 2000, 30000),
       firstPaintBudgetMs: intIn('firstPaintBudgetMs', 800, 0, 5000),
       jsonMode: pick<bool>('jsonMode', true),
+      allowInsecureHttp: pick<bool>('allowInsecureHttp', false),
     );
   }
 
@@ -195,6 +201,7 @@ class AiRecommendSettings {
     'requestTimeoutMs': requestTimeoutMs,
     'firstPaintBudgetMs': firstPaintBudgetMs,
     'jsonMode': jsonMode,
+    'allowInsecureHttp': allowInsecureHttp,
   };
 
   String toJson() => jsonEncode(toMap());
@@ -219,6 +226,7 @@ class AiRecommendSettings {
     int? requestTimeoutMs,
     int? firstPaintBudgetMs,
     bool? jsonMode,
+    bool? allowInsecureHttp,
   }) => AiRecommendSettings(
     enabled: enabled ?? this.enabled,
     mode: mode ?? this.mode,
@@ -239,5 +247,6 @@ class AiRecommendSettings {
     requestTimeoutMs: requestTimeoutMs ?? this.requestTimeoutMs,
     firstPaintBudgetMs: firstPaintBudgetMs ?? this.firstPaintBudgetMs,
     jsonMode: jsonMode ?? this.jsonMode,
+    allowInsecureHttp: allowInsecureHttp ?? this.allowInsecureHttp,
   );
 }

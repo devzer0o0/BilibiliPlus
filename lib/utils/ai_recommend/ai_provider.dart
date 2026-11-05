@@ -47,12 +47,14 @@ class AiProviderConfig {
     required this.model,
     this.timeoutMs = 6000,
     this.jsonMode = true,
+    this.allowInsecureHttp = false,
   });
 
   final String baseUrl;
   final String model;
   final int timeoutMs;
   final bool jsonMode;
+  final bool allowInsecureHttp;
 
   String get fingerprint {
     final normalized =
@@ -77,10 +79,15 @@ class AiProviderConfig {
     }
     final loopback =
         uri.host == 'localhost' || uri.host == '127.0.0.1' || uri.host == '::1';
-    if (uri.scheme != 'https' && !(uri.scheme == 'http' && loopback)) {
-      throw const AiProviderException(
+    final allowedHttp =
+        loopback || (allowInsecureHttp && isPrivateHost(uri.host));
+    if (uri.scheme != 'https' && !(uri.scheme == 'http' && allowedHttp)) {
+      // Not const: the message depends on the runtime flag.
+      throw AiProviderException(
         AiProviderFailure.notConfigured,
-        '模型服务必须使用 HTTPS（本机回环地址除外）',
+        allowInsecureHttp
+            ? '明文 HTTP 仅允许私有网络地址；公网地址必须使用 HTTPS'
+            : '模型服务必须使用 HTTPS（本机回环或内网地址需显式允许）',
       );
     }
     if (uri.hasQuery || uri.hasFragment) {
@@ -96,6 +103,33 @@ class AiProviderConfig {
               ? basePath + 'chat/completions'
               : basePath + '/chat/completions');
     return uri.replace(path: path);
+  }
+
+  /// RFC1918/CGNAT/link-local IPv4, IPv6 ULA/link-local, loopback, ".local"
+  /// names, and single-label intranet names. Public hosts are deliberately
+  /// excluded even when [allowInsecureHttp] is on.
+  static bool isPrivateHost(String host) {
+    final h = host.toLowerCase();
+    if (h == 'localhost' || h == '::1' || h == '127.0.0.1') return true;
+    if (h.endsWith('.local') || !h.contains('.')) return true;
+    if (h.contains(':')) {
+      return h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80:');
+    }
+    final parts = h.split('.');
+    if (parts.length != 4) return false;
+    final octets = <int>[];
+    for (final part in parts) {
+      final value = int.tryParse(part);
+      if (value == null || value < 0 || value > 255) return false;
+      octets.add(value);
+    }
+    if (octets[0] == 10) return true;
+    if (octets[0] == 127) return true;
+    if (octets[0] == 192 && octets[1] == 168) return true;
+    if (octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31) return true;
+    if (octets[0] == 169 && octets[1] == 254) return true;
+    if (octets[0] == 100 && octets[1] >= 64 && octets[1] <= 127) return true;
+    return false;
   }
 }
 

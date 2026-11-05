@@ -51,6 +51,13 @@ void main() {
     expect(s.wantTags, isEmpty);
   });
 
+  test('private HTTP opt-in is explicit and persisted', () {
+    expect(AiRecommendSettings.defaults.allowInsecureHttp, isFalse);
+    final parsed = AiRecommendSettings.fromMap({'allowInsecureHttp': true});
+    expect(parsed.allowInsecureHttp, isTrue);
+    expect(parsed.toMap()['allowInsecureHttp'], isTrue);
+  });
+
   test('toMap is the explicit, non-secret subset', () {
     final map = AiRecommendSettings.defaults
         .copyWith(enabled: true, wantTags: ['NAS'])
