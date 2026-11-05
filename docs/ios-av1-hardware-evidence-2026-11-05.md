@@ -112,7 +112,7 @@ including the exact ten-bit SDR AV1 codec string above.
 | Dolby Vision regression | not exercised | no `dvh1`/profile-5 title sampled this round |
 | AVPlayer hardware decode | unavailable | AVFoundation exposes no equivalent of `hwdec-current` |
 | 15/30-minute stability, thermal, A/V sync | not measured | requires an instrumented session; `tool/decoder_measure.sh` reports duration-limited samples only |
-| Final signed release build retest | see delivery note | the measurements above are a profile diagnostic build; the release bundle is verified by identity, not re-measured |
+| Final signed release build retest | installed and played; hardware state not readable in release | see section 8 |
 
 ## 7. What changed so the same failure cannot recur silently
 
@@ -149,3 +149,41 @@ a device that decodes it in hardware.
   fields only), so no second copy of FFmpeg and no header set is introduced.
 - `HwDecType.resolveHwdec` — turning hardware decoding off now sends `no`
   instead of a null that media_kit rewrites to `auto`.
+## 8. Signed Release package (installed on the device)
+
+Built with `PILIPLUS_DEVELOPMENT_TEAM=8TQDS9JT23 tool/ios_build.sh release` and
+installed over the existing app — same bundle id, so the container, login,
+history and settings survive.
+
+| Item | Value |
+| --- | --- |
+| Artifact | `build/ios/iphoneos/Runner.app`, Release, AOT |
+| Source | `32527759282616f90b822503a509aea32431e74d` |
+| Dart snapshot | `f668ce29a4d8905f994183efeebc051434635a5390076cd333f50f8fa437cae2` |
+| Runner | `ee8225c1a9107a6283e47cf4d58acc40fe8b095988bee4e4c5ed1bb84f43694e` |
+| Signature | team `8TQDS9JT23`, `codesign --verify --deep --strict` valid |
+| Avcodec | UUID `7B672380-F2DC-3D5C-B40B-2A1CF0720FA0`, cdhash `1a48c72a9dd9aa6b1031e099ec46e7f0ebb9820c`, 359 exports, deps unchanged |
+| `verify_release_constraints.sh` | `all constraints satisfied` (AV1 decoder present, every trace marker compiled out) |
+| Install | `devicectl device install app` succeeded over the previous build |
+| Playback | `BV1C8xn6YEDA` 4K60 AV1 sample: four screenshots 3 s apart all differed, picture correct (no green cast, no black frame), danmaku composited |
+| Data | app container intact, previous `playback_diag.log` (5005 lines) preserved across the install |
+
+### What this retest does and does not prove
+
+It proves the delivered bundle **contains and loads** the same AV1 VideoToolbox
+decoder that was measured decoding in hardware — the UUID and the unsigned
+content hash are the measured ones — and that the release build plays the sample
+correctly, with the user's data intact.
+
+It does **not** read `hwdec-current` from the release binary, because a release
+build writes no diagnostics by design: `PlaybackDiagnostics.enabled` is false in
+AOT product mode, and the ffmpeg-level libmpv log is only requested by a
+diagnostics build. A hardware assertion for the shipped binary therefore has to
+come from either
+
+1. a user-visible decode-state readout (the player already shows `hwdec` in its
+   info sheet; reading it needs a tap on the device), or
+2. an opt-in observability build signed the same way.
+
+Until one of those is done, the release retest is **playback + identity**, not a
+hardware measurement, and it is recorded as such.
