@@ -63,6 +63,15 @@ enum HwDecType {
   /// ios/av1, so there is nothing left that needs to fall back.
   static const String iosDefault = 'videotoolbox';
 
+  /// The value to hand mpv for a hardware-decoding setting.
+  ///
+  /// Turning the setting off must produce `no`, not a null that a library then
+  /// replaces with `auto`: media_kit's native video controller writes
+  /// `configuration.hwdec ?? 'auto'`, so "off" arrived as "pick one for me" and
+  /// a device whose VideoToolbox answers yes went on decoding in hardware.
+  static String resolveHwdec({required bool enable, required String preference}) =>
+      enable ? preference : no.hwdec;
+
   /// Values that mean anything on the current platform.
   ///
   /// The dialog used to list every mpv backend, so an iPhone user had to scroll

@@ -4,7 +4,9 @@ import 'package:PiliPlus/models/common/video/video_decode_type.dart';
 import 'package:PiliPlus/models/video/play/url.dart'
     show AudioItem, VideoItem, FormatItem;
 import 'package:PiliPlus/models_new/live/live_room_play_info/codec.dart';
+import 'package:PiliPlus/plugin/pl_player/models/av1_capability.dart';
 import 'package:PiliPlus/plugin/pl_player/models/selected_rendition.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/av1_capability_probe.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/hdr_support.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
@@ -111,10 +113,61 @@ abstract final class VideoUtils {
     return (liveCdnUrl ?? urlInfo.host) + e.baseUrl + urlInfo.extra;
   }
 
+  /// Codecs this build can hand to a hardware decoder right now.
+  ///
+  /// AV1 VideoToolbox exists on the hardware but is not in the Flutter-bundled
+  /// Avcodec: mpv reports `hwdec=no` and falls back to libdav1d, which decodes
+  /// a 2160p AV1 stream on the CPU. Measured on device: 71 of 71 samples were
+  /// `hwdec=no format=av1`, and that is the heat and the stutter.
+  ///
+  /// The patched Avcodec in `ios/av1` carries the backport, so AV1 is only
+  /// demoted when that library was not injected. Demotion is a preference
+  /// change, not a refusal: if the ladder offers nothing else, AV1 still plays.
+  /// AV1 hardware decoding, layer by layer, for this build and this session.
+  static Av1Capability get av1Capability => Av1CapabilityProbe.capability;
+
+  /// Whether AV1 may be selected at all.
+  ///
+  /// Only an established "this build has no AV1 VideoToolbox decoder" demotes
+  /// it. An unanswered probe keeps AV1 in the order: the decision costs one
+  /// codec when it is wrong in that direction, and costs the whole codec when it
+  /// is wrong in the other.
+  static bool get av1HardwareAvailable =>
+      av1LibraryState != CapabilityState.unsupported;
+
+  /// The media-library layer alone, with the test override applied.
+  static CapabilityState get av1LibraryState {
+    final override = _av1LibraryOverride;
+    if (override != null) {
+      return override ? CapabilityState.supported : CapabilityState.unsupported;
+    }
+    return Av1CapabilityProbe.capability.mediaLibrary;
+  }
+
+  /// Test seam: pins the media-library layer without a platform channel.
+  ///
+  /// `null` restores the probed answer.
+  static void setAv1HardwareAvailable(bool? value) => _av1LibraryOverride = value;
+
+  static bool? _av1LibraryOverride;
+
   static VideoDecodeFormatType selectCodec(
     Iterable<String> codecs,
     List<VideoDecodeFormatType> preferCodecs,
   ) {
+    // Without an AV1-capable decoder, preferring AV1 only buys a software
+    // fallback. Drop it from the preference order so the next rung (HEVC) is
+    // chosen instead; AV1 stays reachable through the unknown-codec path below
+    // if it is the only thing offered.
+    if (av1LibraryState == CapabilityState.unsupported &&
+        preferCodecs.contains(VideoDecodeFormatType.AV1)) {
+      final demoted = preferCodecs
+          .where((e) => e != VideoDecodeFormatType.AV1)
+          .toList();
+      if (demoted.isNotEmpty) {
+        return selectCodecIgnoringAv1(codecs, demoted);
+      }
+    }
     if (preferCodecs.isNotEmpty) {
       int bestIndex = preferCodecs.length;
       for (final e in codecs) {
@@ -142,6 +195,36 @@ abstract final class VideoUtils {
       }
     }
     return preferCodecs.firstOrNull ?? VideoDecodeFormatType.AVC;
+  }
+
+  /// [selectCodec] with the AV1 entry already removed.
+  ///
+  /// Split out so the demotion cannot recurse: calling [selectCodec] again
+  /// would re-enter the check and, if AV1 were re-added by a caller, loop.
+  static VideoDecodeFormatType selectCodecIgnoringAv1(
+    Iterable<String> codecs,
+    List<VideoDecodeFormatType> preferCodecs,
+  ) {
+    int bestIndex = preferCodecs.length;
+    for (final e in codecs) {
+      for (int i = 0; i < bestIndex; i++) {
+        if (preferCodecs[i].codes.any(e.startsWith)) {
+          bestIndex = i;
+          if (bestIndex == 0) return preferCodecs[0];
+          break;
+        }
+      }
+    }
+    if (bestIndex < preferCodecs.length) return preferCodecs[bestIndex];
+    // Nothing in the preference order was offered. Fall through to whatever the
+    // ladder does carry, including AV1 - a software decode beats no picture.
+    final first = codecs.firstOrNull;
+    if (first != null) {
+      for (final e in VideoDecodeFormatType.values) {
+        if (e.codes.any(first.startsWith)) return e;
+      }
+    }
+    return preferCodecs.first;
   }
 
   /// Qualities this build must not select.

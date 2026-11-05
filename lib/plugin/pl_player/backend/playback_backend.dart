@@ -30,6 +30,7 @@ class PlaybackRequest {
     this.height,
     this.frameRate,
     this.audioCodecs,
+    this.quality,
   });
 
   /// Stable identity of the rendition, e.g. `bvid:cid:qn:codec`.
@@ -47,6 +48,15 @@ class PlaybackRequest {
   final int? height;
   final String? frameRate;
   final String? audioCodecs;
+
+  /// The catalogue's quality id for this rendition.
+  ///
+  /// Carried because it is the only trustworthy statement about dynamic range
+  /// when the init segment has no `colr` box: the HDR rungs are the ones the
+  /// catalogue labels as HDR. Bit depth is not that statement - a 10-bit SDR
+  /// stream is still SDR - and using it as one made the native path declare PQ
+  /// for media that never claimed it.
+  final int? quality;
 
   final String videoUrl;
 

@@ -249,8 +249,13 @@ abstract final class Pref {
   /// iOS ships an Avcodec build with the AV1 VideoToolbox backport, so AV1 is
   /// hardware decoded there and saves bandwidth over HEVC at the same quality.
   /// Other platforms keep the upstream AVC-first order.
+  /// iOS decodes Dolby Vision in AVFoundation, so the Dolby sample entry is
+  /// named explicitly and first. Leaving it out did not break playback - the
+  /// unknown-codec fallback still resolved it to DVH1 - but it made the
+  /// preference list claim the format was not wanted, and the player had to
+  /// take the generic path to get there.
   static List<VideoDecodeFormatType> get defaultPreferCodecs => Platform.isIOS
-      ? const <VideoDecodeFormatType>[.AV1, .HEVC, .AVC]
+      ? const <VideoDecodeFormatType>[.DVH1, .AV1, .HEVC, .AVC]
       : const <VideoDecodeFormatType>[.AVC, .AV1];
 
   static List<VideoDecodeFormatType> get preferCodecs {
@@ -288,8 +293,15 @@ abstract final class Pref {
     return stored;
   }
 
+  /// mpv's A/V sync mode.
+  ///
+  /// An explicit user choice always wins. Otherwise `auto` picks by content,
+  /// because `display-resample` is not free: it resamples audio continuously to
+  /// track the display refresh rate, which on an already CPU-decoded 2160p
+  /// stream is a measurable share of the heat and the stutter. Where the source
+  /// frame rate matches the display it buys nothing.
   static String get videoSync =>
-      _setting.get(SettingBoxKey.videoSync, defaultValue: 'display-resample');
+      _setting.get(SettingBoxKey.videoSync, defaultValue: 'auto');
 
   static String get autosync => _setting.get(
     SettingBoxKey.autosync,
@@ -667,6 +679,10 @@ abstract final class Pref {
 
   static int get minDurationForRcmd =>
       _setting.get(SettingBoxKey.minDurationForRcmd, defaultValue: 0);
+
+  /// Days of history the recommendation feed may show; 0 means no limit.
+  static int get rcmdAgeFilterDays =>
+      _setting.get(SettingBoxKey.rcmdAgeFilterDays, defaultValue: 0);
 
   static int get minPlayForRcmd =>
       _setting.get(SettingBoxKey.minPlayForRcmd, defaultValue: 0);

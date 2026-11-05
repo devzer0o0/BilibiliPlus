@@ -34,6 +34,8 @@ import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/av1_capability_probe.dart';
+import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:catcher_2/catcher_2.dart';
 import 'package:collection/collection.dart';
 import 'package:dynamic_color/dynamic_color.dart' show DynamicColorPlugin;
@@ -88,6 +90,37 @@ Future<void> _initTmpPath() async {
   tmpDirPath = (await getTemporaryDirectory()).path;
 }
 
+/// Records which codec layers this device and this build actually have.
+///
+/// Two different questions, answered separately:
+///
+///  * the chip: `VTIsHardwareDecodeSupported`, which says nothing about the app;
+///  * the loaded FFmpeg: whether *this* build's AV1 decoder registers a
+///    VideoToolbox path, which is what decides whether AV1 can be selected
+///    without falling back to the CPU.
+///
+/// The previous version answered both with the first, so a build that shipped
+/// the stock Avcodec still preferred AV1 - on a device that reports AV1 support
+/// - and decoded 4K on the CPU. A failure leaves both layers unknown, which keeps
+/// AV1 in the order rather than demoting it on a channel that was simply not
+/// ready.
+Future<void> _detectCodecCapabilities() async {
+  try {
+    final caps = await const MethodChannel(
+      'pilipilus/hdr_video/control',
+    ).invokeMethod<Map>('codecCapability', const {'id': 'codec'});
+    final av1 = caps?['av1'];
+    if (av1 is bool) Av1CapabilityProbe.observeSystem(av1);
+  } catch (_) {
+    // Unknown, not unsupported.
+  }
+  await Av1CapabilityProbe.refresh();
+  PlaybackDiagnostics.record(
+    'codec-capability',
+    VideoUtils.av1Capability.toString(),
+  );
+}
+
 Future<void> _initAppPath() async {
   appSupportDirPath = (await getApplicationSupportDirectory()).path;
 }
@@ -139,6 +172,10 @@ void main() async {
       if (Pref.horizontalScreen) ?fullMode() else ?portraitUpMode(),
       setupServiceLocator(),
       if (Platform.isIOS) IOSPipHelper.init(),
+      // Which codecs this build can actually decode in hardware. Without it the
+      // order is a guess from the catalogue, and a guess that prefers AV1 on a
+      // build without the AV1 backport sends a 2160p stream to libdav1d.
+      if (Platform.isIOS) _detectCodecCapabilities(),
     ]);
     _markStartup('orientation+locator+pip');
   } else if (Platform.isWindows) {

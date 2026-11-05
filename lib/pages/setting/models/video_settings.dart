@@ -389,7 +389,7 @@ Future<void> _showCodecsDialog(
     builder: (context) => OrderedMultiSelectDialog<VideoDecodeFormatType>(
       title: const Text('首选解码格式'),
       initValues: Pref.preferCodecs,
-      values: {for (final e in VideoDecodeFormatType.values) e: e.name},
+      values: {for (final e in VideoDecodeFormatType.values) e: e.description},
     ),
   );
   if (res != null && res.isNotEmpty) {
@@ -410,7 +410,7 @@ Future<void> _showCellularCodecsDialog(
     builder: (context) => OrderedMultiSelectDialog<VideoDecodeFormatType>(
       title: const Text('蜂窝网络首选解码格式'),
       initValues: Pref.preferCodecsCellular,
-      values: {for (final e in VideoDecodeFormatType.values) e: e.name},
+      values: {for (final e in VideoDecodeFormatType.values) e: e.description},
     ),
   );
   if (res != null && res.isNotEmpty) {

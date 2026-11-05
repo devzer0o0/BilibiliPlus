@@ -31,9 +31,11 @@ flutter build ios --release --no-codesign --no-pub \
   --dart-define="pili.hash=$git_hash" \
   --dart-define="pili.time=$build_time"
 
-cp "$root/ios/av1/Avcodec" "$app/Frameworks/Avcodec.framework/Avcodec"
-chmod 755 "$app/Frameworks/Avcodec.framework/Avcodec"
-plutil -replace MinimumOSVersion -string 15.0 "$app/Frameworks/Avcodec.framework/Info.plist"
+# Replace, then verify identity/exports/dependencies before signing. A failure
+# here stops the build: an app whose AV1 decoder silently reverted to the pod's
+# copy decodes 4K on the CPU and looks, from the device, like unsupported
+# hardware.
+bash "$root/tool/ios_av1_package.sh" install "$app"
 cp "$profile" "$app/embedded.mobileprovision"
 
 tmp="$(mktemp -d)"
@@ -48,6 +50,7 @@ find "$app/Frameworks" -maxdepth 1 -type d -name '*.framework' -print0 |
 codesign --force --sign "$identity" --entitlements "$tmp/entitlements.plist" \
   --timestamp=none --generate-entitlement-der "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
+bash "$root/tool/ios_av1_package.sh" verify "$app"
 
 echo "Built signed app: $app"
 echo "Install with:"

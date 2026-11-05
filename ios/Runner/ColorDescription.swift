@@ -301,3 +301,44 @@ enum ColorDescription {
     return value
   }
 }
+// MARK: - Dynamic range when nothing else says
+
+extension ColorDescription {
+  /// The catalogue rungs that are HDR.
+  ///
+  /// The only dependable statement about dynamic range for a rendition whose
+  /// init segment has no `colr` box: Bilibili serves HDR on these quality ids
+  /// and nowhere else.
+  static let hdrQualities: Set<Int> = [125, 126, 129]
+
+  /// The `VIDEO-RANGE` to declare when neither the media nor the caller said.
+  ///
+  /// Bit depth is not a transfer function. This used to answer PQ for *any*
+  /// ten-bit HEVC or AV1 track whose range was unknown, which is right for an
+  /// HDR10 rung and wrong for the ten-bit SDR streams the catalogue also ships -
+  /// and "wrong" here means AVFoundation tone-maps an SDR picture as if it were
+  /// HDR, which looks like a decoder fault rather than a metadata fault.
+  ///
+  /// `nil` means "not known". The playlist then declares no range and the
+  /// format description decides from the bitstream, which is the honest default.
+  static func rangeWhenUnknown(codecs: String?, quality: Int?) -> String? {
+    guard let codecs, !codecs.isEmpty else { return nil }
+
+    // Dolby Vision is its own sample entry, and every profile the catalogue
+    // serves declares PQ. Profiles 7 and 8 carry an HDR10 or HLG base layer,
+    // but AVFoundation resolves the base layer from the RPU, not from this.
+    if codecs.hasPrefix("dvh1") || codecs.hasPrefix("dvhe") { return "PQ" }
+
+    guard let quality, hdrQualities.contains(quality) else { return nil }
+    let hevc = codecs.hasPrefix("hev1") || codecs.hasPrefix("hvc1")
+    let av1 = codecs.hasPrefix("av01")
+    guard hevc || av1 else { return nil }
+    let tenBit = codecs.contains("hvc1.2") || codecs.contains("hev1.2")
+      || (av1 && codecs.split(separator: ".").count > 3
+            && codecs.split(separator: ".")[3] == "10")
+    guard tenBit else { return nil }
+    // HDR10/PQ is what the catalogue serves on these rungs; HLG would have to
+    // come from the media, and if the media had said, this would not be called.
+    return "PQ"
+  }
+}

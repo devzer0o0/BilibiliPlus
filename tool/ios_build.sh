@@ -71,7 +71,50 @@ for CONFIG in Debug Profile Release; do
   fi
 done
 
-echo "== 3. artefact identity =="
+echo "== 3. AV1 VideoToolbox injection =="
+# The Flutter-bundled Avcodec has no AV1 VideoToolbox decoder. Without this the
+# player reports hwdec=no for an AV1 stream and decodes 2160p on the CPU - that
+# is the heat and the stutter. Measured: 71 of 71 samples were hwdec=no av1.
+#
+#
+# This step fails the build. It used to print "SKIPPED" and carry on, which is
+# how an installable app reached the phone without an AV1 decoder: every frame
+# decoded on the CPU, mpv reported `hwdec=no`, and the result read as "this
+# hardware cannot do AV1" rather than "this build did not include the decoder".
+# The only build that may omit AV1 is one that says so, and this is not it.
+if [ ! -f "$ROOT/ios/av1/Avcodec" ]; then
+  echo "BLOCKED_AV1: ios/av1/Avcodec is missing; refusing to produce an app without an AV1 decoder" >&2
+  exit 7
+fi
+AV1_PROFILE="$(mktemp -t pilipilus-profile)"
+if ! cp "$APP/embedded.mobileprovision" "$AV1_PROFILE" 2>/dev/null; then
+  echo "BLOCKED_SIGNING: the build carries no embedded provisioning profile to re-sign with" >&2
+  exit 7
+fi
+AV1_IDENTITY="${IOS_SIGN_IDENTITY:-}"
+if [ -z "$AV1_IDENTITY" ]; then
+  # Match on the certificate name first: the keychain also holds a
+  # "Plumb Local Signer" identity, and taking its hex string would
+  # sign for the wrong team.
+  AV1_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+    | grep "Apple Development" \
+    | grep -o "[0-9A-F]\{40\}" \
+    | head -1)"
+fi
+if [ -z "$AV1_IDENTITY" ]; then
+  echo "BLOCKED_SIGNING: no Apple Development identity to re-sign the AV1 framework" >&2
+  exit 7
+fi
+IOS_SIGN_IDENTITY="$AV1_IDENTITY" \
+  IOS_PROVISIONING_PROFILE="$AV1_PROFILE" \
+  bash "$ROOT/tool/inject_ios_avcodec.sh" "$APP" || {
+    echo "BLOCKED_AV1: injecting the AV1 VideoToolbox Avcodec failed" >&2
+    exit 7
+  }
+rm -f "$AV1_PROFILE"
+echo "  installed and verified"
+
+echo "== 4. artefact identity =="
 tool/identity.sh "$APP" 2>/dev/null || bash "$ROOT/tool/identity.sh" "$APP"
 
 echo

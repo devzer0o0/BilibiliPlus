@@ -38,6 +38,9 @@ import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/plugin/pl_player/models/video_fit_type.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/danmaku_options.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/decoder_probe.dart';
+import 'package:PiliPlus/plugin/pl_player/models/av1_capability.dart';
+import 'package:PiliPlus/plugin/pl_player/models/hwdec_type.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/av1_capability_probe.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/diagnostics.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/playback_diagnostics.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
@@ -171,6 +174,187 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       return const DecoderObservation();
     }
     return DecoderProbe(player, enabled: true).sample();
+  }
+
+  Timer? _decoderTicker;
+  DecoderObservation? _previousObservation;
+
+  /// Starts the measurement loop, once per player, in a diagnostics build only.
+  ///
+  /// `hwdec=videotoolbox` is what mpv was *asked* for; only these reads say
+  /// what it did. Without them a silent software fallback shows up as "4K feels
+  /// janky" with nothing in the log to confirm it, which is exactly the report
+  /// this exists to answer.
+  void _startDecoderSampling() {
+    if (!Diagnostics.enabled) return;
+    _decoderTicker?.cancel();
+    _previousObservation = null;
+    _decoderTicker = Timer.periodic(Diagnostics.sampleInterval, (_) {
+      if (route.isNative) {
+        PlaybackDiagnostics.sample(
+          'decoder',
+          'route=native counters=unavailable (mpv properties do not describe the native layer)',
+        );
+        return;
+      }
+      final observation = sampleDecoder();
+      if (observation.at == null) return;
+      final previous = _previousObservation;
+      _previousObservation = observation;
+      // Cumulative counters read twice are not a rate; report the delta and
+      // the absolute value, so a stalled playback is visible either way.
+      final delta = previous == null ? observation : observation.deltaFrom(previous);
+      PlaybackDiagnostics.sample(
+        'decoder',
+        'hwdec=${observation.hwdecCurrent ?? "unavailable"} '
+            'codec=${observation.videoCodec ?? "-"} '
+            'format=${observation.videoFormat ?? "-"} '
+            'src=${observation.sourceWidth ?? "?"}x${observation.sourceHeight ?? "?"} '
+            'out=${observation.outputWidth ?? "?"}x${observation.outputHeight ?? "?"} '
+            'fps=${observation.sourceFrameRate ?? "?"} '
+            'vfFps=${observation.estimatedFrameRate ?? "?"} '
+            'drops=${delta.frameDropCount ?? "?"} '
+            'decDrops=${delta.decoderFrameDropCount ?? "?"} '
+            'totalDrops=${observation.frameDropCount ?? "?"} '
+            'avsync=${observation.avsyncSeconds ?? "?"} '
+            'sync=${observation.videoSync ?? "-"} '
+            'cache=${observation.demuxerCacheDuration ?? "?"} '
+            'pausedForCache=${observation.pausedForCache ?? "?"} '
+            'unavailable=${observation.unavailable}',
+      );
+      // A silent software fallback is the failure this probe exists for; call
+      // it out at the point it is observed rather than leaving it to be read
+      // out of the numbers later.
+      if (observation.softwareDecoding) {
+        PlaybackDiagnostics.record(
+          'decoder-software',
+          'hwdec-current=${observation.hwdecCurrent} '
+              'codec=${observation.videoCodec ?? "-"} '
+              'src=${observation.sourceWidth ?? "?"}x${observation.sourceHeight ?? "?"}',
+        );
+      }
+    });
+  }
+
+  /// Reads one mpv property, reporting a missing property as "unavailable".
+  ///
+  /// Used by the diagnostics path only. A property this libmpv does not expose
+  /// must never be reported as an empty string that reads as "unset", and a
+  /// read must never be able to fail the player.
+  String _safeProperty(Player player, String name) {
+    try {
+      final value = player.getProperty(name);
+      return value.isEmpty ? '<empty>' : value;
+    } catch (_) {
+      return '<unavailable>';
+    }
+  }
+
+  void _stopDecoderSampling() {
+    _decoderTicker?.cancel();
+    _decoderTicker = null;
+    _previousObservation = null;
+  }
+
+  // MARK: - Session decode state
+
+  /// How many consecutive observations of a software decode count as "sustained".
+  ///
+  /// Three, spaced by user-visible events rather than by a timer: the first
+  /// frames of any stream arrive before mpv knows its decoder, and reading that
+  /// gap as a fallback is how "AV1 is broken" gets reported for a stream that is
+  /// decoding in hardware one second later.
+  static const int _sustainedSoftwareSamples = 3;
+
+  /// Set when this session has been decoding AV1 on the CPU long enough that
+  /// doing nothing is a decision.
+  ///
+  /// A notifier rather than a callback: the player does not know what
+  /// alternatives the current title offers, and the page that does must not have
+  /// to poll for this. Cleared for every new source.
+  final ValueNotifier<bool> av1SoftwareSustained = ValueNotifier<bool>(false);
+
+  int _softwareObservations = 0;
+  String? _softwareSourceKey;
+  bool _sustainedSoftwareReported = false;
+
+  /// Reads the two properties that decide this session's decode path.
+  ///
+  /// Cheap on purpose, and *not* behind [Diagnostics.enabled]: the answer moves
+  /// product behaviour (the notice below, the player's info panel), so it has to
+  /// exist in a release build. One read per format change, never a poll.
+  void _observeDecodeSession() {
+    if (_disposed) return;
+    if (route.isNative) {
+      // AVPlayer owns its VideoToolbox session and exposes no equivalent of
+      // `hwdec-current`. Saying "hardware" here would be an invention; saying
+      // "software" would be a lie in the other direction.
+      Av1CapabilityProbe.observeSession(SessionDecodeState.starting);
+      return;
+    }
+    final player = _videoPlayerController;
+    if (player == null) return;
+    final String hwdec;
+    final String format;
+    try {
+      hwdec = player.getProperty('hwdec-current');
+      format = player.getProperty('video-format');
+    } catch (_) {
+      return;
+    }
+    if (hwdec.isEmpty) {
+      // No decoder has reported yet: between the source being opened and the
+      // first frame this property is empty, and that is not a verdict.
+      Av1CapabilityProbe.observeSession(SessionDecodeState.starting);
+      return;
+    }
+    final hardware = hwdec != 'no';
+    Av1CapabilityProbe.observeSession(
+      hardware ? SessionDecodeState.hardware : SessionDecodeState.software,
+    );
+    if (format != 'av1') return;
+
+    final key = _currentSourceKey;
+    if (key != _softwareSourceKey) {
+      _softwareSourceKey = key;
+      _softwareObservations = 0;
+      _sustainedSoftwareReported = false;
+    }
+    if (hardware) {
+      _softwareObservations = 0;
+      return;
+    }
+    _softwareObservations++;
+    if (_sustainedSoftwareReported ||
+        _softwareObservations < _sustainedSoftwareSamples) {
+      return;
+    }
+    _sustainedSoftwareReported = true;
+    av1SoftwareSustained.value = true;
+    final observation = DecoderProbe(player, enabled: true).sample();
+    PlaybackDiagnostics.record(
+      'av1-software-sustained',
+      'hwdec-current=$hwdec format=$format '
+          'src=${observation.sourceWidth ?? "?"}x${observation.sourceHeight ?? "?"} '
+          'requested=$hwdec-requested:$hwdec '
+          'source=${key ?? "-"}',
+    );
+    // A 4K stream on the CPU is not a silent problem: it is heat and dropped
+    // frames the user can see. One notice per source, never a loop, and never a
+    // permanent demotion - the next title may decode in hardware perfectly well.
+    _toast('AV1 正在使用软件解码，可能出现卡顿与发热');
+  }
+
+  /// Identity of the source currently open, for associating observations.
+  String? _currentSourceKey;
+
+  void _beginDecodeSession(String? sourceKey) {
+    _currentSourceKey = sourceKey;
+    _softwareSourceKey = null;
+    _softwareObservations = 0;
+    _sustainedSoftwareReported = false;
+    av1SoftwareSustained.value = false;
+    Av1CapabilityProbe.observeSession(SessionDecodeState.starting);
   }
 
   /// Where playback currently is, including the states between backends.
@@ -871,7 +1055,20 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       : Pref.defaultVideoQa;
   late int cacheAudioQa = Pref.defaultAudioQa;
   bool enableHeart = true;
-  late final String? hwdec = Pref.enableHA ? Pref.hardwareDecoding : null;
+  /// What this player asks mpv for.
+  ///
+  /// Never null. media_kit's native video controller substitutes `auto` when the
+  /// value is null (`configuration.hwdec ?? 'auto'`), so turning hardware
+  /// decoding off in the settings arrived at mpv as "choose for me" - which on a
+  /// device whose VideoToolbox answers yes means a hardware decoder, from a user
+  /// who asked for software. `no` is the only value that means no.
+  late final String hwdec = HwDecType.resolveHwdec(
+    enable: Pref.enableHA,
+    preference: Pref.hardwareDecoding,
+  );
+
+  /// Whether hardware decoding is enabled for this player.
+  bool get enableHardwareDecoding => hwdec != 'no';
 
   late final progressType = Pref.btmProgressBehavior;
   late final enableQuickDouble = Pref.enableQuickDouble;
@@ -1132,6 +1329,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     int? nativeWidth,
     int? nativeHeight,
     String? nativeFrameRate,
+    int? nativeQuality,
     String? sourceKey,
   }) async {
     try {
@@ -1187,6 +1385,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       final key =
           sourceKey ??
           'native:${_bvid ?? ''}:${this.cid ?? 0}:$generation';
+      // The previous session's decode evidence does not describe this source:
+      // a title that decoded in hardware says nothing about the codec, profile
+      // or resolution of the one about to open.
+      _beginDecodeSession(key);
 
       if (!useNative) {
         // Leaving the native path has to tear it down before mpv opens, or the
@@ -1201,6 +1403,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
         if (_playerCount == 0) {
           _removeListeners();
+          _stopDecoderSampling();
           _videoPlayerController?.dispose();
           _videoPlayerController = null;
           _videoController = null;
@@ -1250,6 +1453,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
             width: nativeWidth,
             height: nativeHeight,
             frameRate: nativeFrameRate,
+            quality: nativeQuality,
             startPosition: seekTo,
             autoPlay: _autoPlay,
             rate: isLive ? 1.0 : playbackSpeed,
@@ -1387,7 +1591,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
     final player = await Player.create(
       configuration: PlayerConfiguration(
-        logLevel: kDebugMode ? .warn : .error,
+        // A diagnostics build asks libmpv for the ffmpeg-level lines, because
+        // the decoder's reason is only ever written there. A shipping build
+        // keeps the quiet default.
+        logLevel: Diagnostics.enabled ? .v : (kDebugMode ? .warn : .error),
         options: opt,
       ),
     );
@@ -1397,11 +1604,32 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _videoController = await VideoController.create(
       player,
       configuration: VideoControllerConfiguration(
-        enableHardwareAcceleration: hwdec != null,
+        enableHardwareAcceleration: enableHardwareDecoding,
         androidAttachSurfaceAfterVideoParameters: false,
         hwdec: hwdec,
       ),
     );
+
+    // What mpv actually holds, read back after the video controller had its
+    // say.
+    //
+    // VideoController.create writes `hwdec` itself, and the value it writes is
+    // not always the one the caller passed: its native backend substitutes
+    // `auto` whenever the argument is null, so a user who turned hardware
+    // decoding off still got whatever mpv's `auto` picks - including a
+    // hardware decoder. Reading the property back is the only way to see which
+    // of the two values won.
+    if (Diagnostics.enabled) {
+      PlaybackDiagnostics.record(
+        'mpv-hwdec',
+        'requested=$hwdec '
+            'enableHA=${Pref.enableHA} '
+            'hardwareDecoding=${Pref.hardwareDecoding} '
+            'applied=${_safeProperty(player, 'hwdec')} '
+            'hwdec-codecs=${_safeProperty(player, 'hwdec-codecs')} '
+            'vo=${_safeProperty(player, 'vo')}',
+      );
+    }
 
     if (Platform.isAndroid) {
       // Avoid sizing the surface using mpv's idle window between media loads.
@@ -1442,6 +1670,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         return;
       }
       _videoPlayerController = player;
+      // Measurement starts with the player, not with the source: the counters
+      // describe this decoder instance, and a source switch keeps it.
+      _startDecoderSampling();
       if (isAnim && superResolutionType.value != .disable) {
         await setShader();
       }
@@ -1637,6 +1868,14 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     assert(_subscriptions == null);
     final stream = player.stream;
     _subscriptions = [
+      // A new video format is exactly where a decoder is chosen: the first
+      // frame of a source, a quality switch, a codec switch, a resolution
+      // change. Reading the session's decode state here costs two property
+      // reads per event and never polls.
+      stream.videoParams.listen((params) {
+        _observeDecodeSession();
+      }),
+
       /// playing
       stream.playing.listen((bool playing) {
         if (playing) {
@@ -1657,6 +1896,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         _reduceMpv(playing: playing, completed: false, notifyStatus: true);
 
         if (playing) {
+          // First frame of a playback: the decoder has reported by now, and this
+          // is the earliest point where its answer means anything.
+          _observeDecodeSession();
           final seconds = _snapshot.position.inSeconds;
           if (seconds != 0) {
             makeHeartBeat(seconds, type: .status);
@@ -1714,6 +1956,40 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           } else {
             debugPrint(log.toString());
           }
+        })),
+      if (Diagnostics.enabled)
+        // libmpv's own log, in a diagnostics build only.
+        //
+        // This is the only place that carries the *decoder's* reason for a
+        // decision: "Could not open decoder", ffmpeg's hwaccel and
+        // VideoToolbox failures, and mpv's own note about the software
+        // fallback all arrive here and nowhere else. Reading mpv properties
+        // afterwards can say `hwdec-current=no`, but never why.
+        //
+        // It used to be wired up in debug builds only, so a profile build -
+        // the only kind that launches from the home screen on a device - could
+        // report that AV1 fell back to software with no cause attached.
+        stream.log.listen(((PlayerLog log) {
+          // Which prefixes can explain a decode decision: the video decoder, the
+          // video output, the player core, and ffmpeg itself. Everything else
+          // (audio, subtitles, OSC) is noise here and would spend the budget.
+          const relevant = {
+            'vd',
+            'vo',
+            'cplayer',
+            'lavc',
+            'lavf',
+            'ffmpeg',
+            'demux',
+            'gpu',
+          };
+          final level = log.level;
+          final isProblem = level == 'error' || level == 'fatal';
+          if (!isProblem && !relevant.contains(log.prefix)) return;
+          PlaybackDiagnostics.trace(
+            'mpv-log',
+            '$level ${log.prefix}: ${log.text}',
+          );
         })),
       stream.error.listen((String event) {
         // Record what mpv actually said, not just what the app chose to show.
@@ -2423,6 +2699,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     if (kDebugMode) {
       debugPrint('dispose player');
     }
+    _stopDecoderSampling();
     _videoPlayerController?.dispose();
     _videoPlayerController = null;
     _videoController = null;

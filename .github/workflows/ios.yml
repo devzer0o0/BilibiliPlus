@@ -43,11 +43,10 @@ jobs:
         run: |
           flutter build ios --release --no-codesign --dart-define-from-file=pili_release.json --no-pub
           # Ship the AV1 VideoToolbox Avcodec; the stock framework decodes AV1 in
-          # software. ABI 61.3.100 and the 359 exported symbols are unchanged.
-          cp ios/av1/Avcodec build/ios/iphoneos/Runner.app/Frameworks/Avcodec.framework/Avcodec
-          chmod 755 build/ios/iphoneos/Runner.app/Frameworks/Avcodec.framework/Avcodec
-          plutil -replace MinimumOSVersion -string 15.0 \
-            build/ios/iphoneos/Runner.app/Frameworks/Avcodec.framework/Info.plist
+          # software. The step replaces, then checks the identity a re-sign cannot
+          # change (UUID, the full export set, dependencies) and fails the job
+          # when the bundle would ship without an AV1 decoder.
+          tool/ios_av1_package.sh install build/ios/iphoneos/Runner.app
           # Fail the build if the bundle id drifted, the AV1 ABI changed, or
           # temporary diagnostics leaked into the release binary.
           tool/verify_release_constraints.sh build/ios/iphoneos/Runner.app

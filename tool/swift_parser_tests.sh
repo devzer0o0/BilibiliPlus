@@ -26,7 +26,12 @@ sed -i.bak 's/^import Foundation$/import Foundation\nimport Network/' \
   "$WORK/Sources/Parser/HlsBridge.swift"
 sed -i.bak 's/^import XCTest$/import XCTest\n@testable import Parser/' \
   "$WORK"/Tests/ParserTests/*.swift
-find "$WORK" -name '*.bak' -delete
+# Explicit paths rather than `find … -delete`: the temp tree is small and known,
+# and a broad delete rule is not something a test harness needs.
+rm -f "$WORK/Sources/Parser/HlsBridge.swift.bak"
+for f in "$WORK"/Tests/ParserTests/*.swift.bak; do
+  [ -e "$f" ] && rm -f "$f"
+done
 
 cat > "$WORK/Package.swift" <<'EOF'
 // swift-tools-version:5.9

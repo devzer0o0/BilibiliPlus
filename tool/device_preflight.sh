@@ -86,10 +86,20 @@ PY
   fi
   rm -f "$LIST_FILE"
 
-  # 'wired'/'network' are the CoreDevice transport values for a reachable
-  # device; 'connected'/'available'/'paired' are the older vocabularies.
+  # A device that a launch can reach is reachable, whatever the transport
+  # field says.
+  #
+  # The connection dictionary reports `state: disconnected` for a phone on the
+  # local network that is perfectly usable - it describes the *tunnel*, which is
+  # only established on demand. Gating on that word reported
+  # BLOCKED_DEVICE_UNAVAILABLE for a device that accepted launches the whole
+  # time, which then made every measurement script refuse to run. The launch is
+  # the capability; this list only rejects the states that cannot be.
   case "${REACH:-}" in
-    connected|available|paired|wired|network)
+    missing|"")
+      sleep 5
+      ;;
+    *)
       LOCKED_CHECK=$(xcrun devicectl device info details --device "$UDID" 2>&1 | head -40)
       if printf '%s' "$LOCKED_CHECK" | grep -qi locked; then
         state BLOCKED_LOCKED "device $UDID reports locked; unlock it and rerun" 6
@@ -113,15 +123,6 @@ PY
         *)            say "launch output: $(printf '%s' "$OUT" | head -3 | tr '\n' ' ')"
                       state BLOCKED_DEVICE_UNAVAILABLE "launch refused for an unrecognised reason" 5 ;;
       esac
-      ;;
-    missing)
-      sleep 5
-      ;;
-    "")
-      sleep 5
-      ;;
-    *)
-      sleep 5
       ;;
   esac
 done

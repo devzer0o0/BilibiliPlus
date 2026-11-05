@@ -26,56 +26,23 @@ BID=$(plutil -extract CFBundleIdentifier raw "$APP/Info.plist" 2>/dev/null)
   || bad "CFBundleIdentifier is '$BID', expected com.example.pilipalax"
 
 echo "== AV1 framework =="
+# One implementation, shared with both build entry points. It checks the identity
+# a signature cannot change - Mach-O UUID, the full exported symbol set, the
+# dependent libraries - because a whole-file hash of a *signed* app never matches
+# the vendored binary even when the code is identical, and a hardcoded "359"
+# would accept a different 359 symbols.
+if bash "$ROOT/tool/ios_av1_package.sh" verify "$APP"; then
+  note "AV1 VideoToolbox decoder present and identified"
+else
+  bad "the bundle does not carry a verified AV1 VideoToolbox decoder"
+fi
 AV="$APP/Frameworks/Avcodec.framework/Avcodec"
 if [ -f "$AV" ]; then
-  # Read the ABI off the framework itself. Runner does not link Avcodec
-  # directly - libmpv loads it - so grepping Runner's load commands always came
-  # back empty and reported a failure for a bundle that was in fact correct.
-  ABI=$(otool -l "$AV" 2>/dev/null | grep -A2 LC_BUILD_VERSION \
-    | grep -o 'current version [0-9.]*' | head -1)
-  if [ -z "$ABI" ]; then
-    # Fall back to the dylib's own compatibility/current version line.
-    ABI=$(otool -D "$AV" 2>/dev/null | tail -1)
-  fi
-  ID=$(otool -l "$AV" 2>/dev/null | grep -A4 LC_ID_DYLIB \
-    | grep -o 'current version [0-9.]*' | head -1)
-  note "framework id: ${ID:-unknown}"
-  if [ -n "$ID" ]; then
-    case "$ID" in
-      *"61.3.100"*) note "ABI 61.3.100 as vendored" ;;
-      *) bad "unexpected ABI in '$ID'" ;;
-    esac
-  else
-    bad "could not read the framework ABI"
-  fi
-  EXPORTS=$(nm -gU "$AV" 2>/dev/null | wc -l | tr -d ' ')
-  [ "$EXPORTS" = "359" ] \
-    && note "exports = $EXPORTS" \
-    || bad "exports = $EXPORTS, expected 359"
-
   ARCHS=$(lipo -archs "$AV" 2>/dev/null)
   case "$ARCHS" in
     *arm64*) note "architectures: $ARCHS" ;;
     *) bad "unexpected architectures '$ARCHS' (expected arm64 for device)" ;;
   esac
-
-  # The binary must be the vendored one, not a rebuild with the same ABI and
-  # symbol count. `nm` counting is a shape check; the hash is an identity check.
-  VENDORED="$ROOT/ios/av1/Avcodec"
-  if [ -f "$VENDORED" ]; then
-    A=$(shasum -a 256 "$AV" | cut -d' ' -f1)
-    B=$(shasum -a 256 "$VENDORED" | cut -d' ' -f1)
-    if [ "$A" = "$B" ]; then
-      note "binary matches vendored ios/av1/Avcodec ($A)"
-    else
-      # A plain `flutter build ios` ships the pod's copy. Only
-      # tool/inject_ios_avcodec.sh puts the vendored AV1 build in place, so this
-      # is either a build that skipped injection or a different binary entirely.
-      bad "binary differs from the vendored Avcodec (app=$A vendored=$B) - run tool/inject_ios_avcodec.sh"
-    fi
-  else
-    bad "vendored ios/av1/Avcodec missing - cannot verify binary identity"
-  fi
 else
   bad "Avcodec.framework missing"
 fi

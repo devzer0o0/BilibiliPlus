@@ -2059,7 +2059,8 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                 // 1920x1080 independently, which would letterbox an arbitrary
                 // source.
                 final resizeVideoOutput = shouldResizeVideoOutput(
-                  hardwareDecoding: plPlayerController.hwdec != null,
+                  hardwareDecoding:
+                      plPlayerController.enableHardwareDecoding,
                   superResolutionDisabled:
                       plPlayerController.superResolutionType.value ==
                       SuperResolutionType.disable,

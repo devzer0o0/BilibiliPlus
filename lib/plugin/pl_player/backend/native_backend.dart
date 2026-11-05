@@ -102,6 +102,7 @@ class NativePlaybackBackend implements PlaybackBackend {
     'width': ?request.width,
     'height': ?request.height,
     'frameRate': ?request.frameRate,
+    'quality': ?request.quality,
   };
 
   @override

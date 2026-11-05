@@ -42,7 +42,57 @@ and `DIAG_REC` strings in the binary come from the bundled SQL keyword tables.
 
 ## AV1 hardware decode
 
-The stock iOS libmpv build uses FFmpeg 7.0.2 without `av1_videotoolbox`; AV1 falls back to libdav1d (software). Replace only `Avcodec.framework/Avcodec` with an FFmpeg 7.0.2 build containing the upstream AV1 VideoToolbox backport (FFmpeg commit `f9c5c5358cfef3847674c6f3b3ded9611ebc5647`). The replacement keeps ABI `61.3.100`, the original 359 exported symbols, and the original dependent frameworks.
+The stock iOS libmpv build uses FFmpeg 7.0.2 without `av1_videotoolbox`; AV1 falls back to libdav1d (software). Replace only `Avcodec.framework/Avcodec` with an FFmpeg 7.0.2 build containing the upstream AV1 VideoToolbox backport (FFmpeg commit `f9c5c5358cfef3847674c6f3b3ded9611ebc5647`). The replacement keeps ABI `61.3.100`, the original dependent frameworks, and the same exported symbol set (compared in full, not by count).
+
+### Five things this branch used to get wrong
+
+Each of these produced a confident, wrong conclusion during the investigation. They
+are written down because the same reasoning is easy to repeat.
+
+| Claim | What is actually true |
+| --- | --- |
+| "The device supports AV1, so the app does." | VideoToolbox answering yes describes the **chip**. Whether *this build* can decode AV1 depends on the `Avcodec` it shipped. They are separate layers, and the app now records both. |
+| "Asking for `hwdec=videotoolbox` means it will not fall back." | It is a request. mpv chooses per stream and reports the outcome in `hwdec-current`; a decoder that fails to initialise leaves the frame in software with the same setting in place. |
+| "Ten-bit means HDR, so declare PQ." | Bit depth is not a transfer function. Ten-bit SDR AV1 is served by the catalogue, and declaring PQ for it makes AVFoundation tone-map an SDR picture as HDR. |
+| "The binary contains `av1_videotoolbox`, so decoding is hardware." | A symbol proves the code exists. Only the decoded frame format (`videotoolbox[nv12]` in `vd: Decoder format`) and `hwdec-current` show that it ran. |
+| "It worked on the 2 November build, so it works now." | Builds differ by which `Avcodec` was injected. A plain `flutter build ios` ships the pod's copy, which has no AV1 VideoToolbox decoder at all. |
+
+### Build integrity
+
+Every entry point (`tool/ios_build.sh`, `tool/build_ios_av1.sh`,
+`.github/workflows/ios.yml`) now goes through `tool/ios_av1_package.sh`. It
+replaces the framework and then proves it:
+
+- the Mach-O **UUID** must be the vendored build's (re-signing cannot change it);
+- the **full exported symbol set** must match, not a count;
+- the **dependent libraries** must match;
+- `av1_videotoolbox` must be present;
+- a device build must not receive a simulator slice, and vice versa.
+
+A failure stops the build. It used to print `SKIPPED` and continue, which is how
+an installable app reached the phone without an AV1 decoder and looked, from the
+device, like unsupported hardware.
+
+### Capability model
+
+`lib/plugin/pl_player/models/av1_capability.dart` keeps four answers apart:
+**system** (`VTIsHardwareDecodeSupported`), **media library** (the loaded FFmpeg
+registers a VideoToolbox hwaccel for `av1`), **backend** (the current renderer can
+carry it), and **session** (`idle` / `starting` / `hardware` / `software` /
+`failed`). `unknown` demotes nothing: only an established "this library has no AV1
+VideoToolbox decoder" removes AV1 from the preference order, because demoting on a
+missing answer loses a capability that is present.
+
+The library layer is read from the **loaded** binary through `dlsym`
+(`avcodec_version`, `avcodec_configuration`, `avcodec_find_decoder_by_name`,
+`avcodec_get_hw_config`), so no second FFmpeg and no header set are introduced.
+
+### Turning hardware decoding off
+
+`Pref.enableHA == false` now sends `hwdec=no`. It used to send `null`, and
+media_kit's native video controller writes `configuration.hwdec ?? 'auto'` — so
+"off" arrived at mpv as "choose for me" and a device whose VideoToolbox answers yes
+went on decoding in hardware.
 
 Runtime contract:
 
@@ -195,3 +245,24 @@ Status on 2026-11-02 (iPhone Air, iOS 27.2, builds 5581 to 5596):
 | HEVC 4K software-decode outlier | one non-reproducible `hwdec=no` sample; trigger unknown, see codec evidence |
 | Battery/thermal curve | not measurable: the device stayed on the charger during the run |
 | 8K AV1 | pass: decoder receives the full 8192x4320 surface in hardware |
+## Status on 2026-11-05 (current code, re-measured)
+
+The table above describes **build 5581–5596 for iOS 27.2**, not the current
+branch. It is kept as history; none of it was carried forward as a pass. What was
+re-measured on iOS 27.3 with this branch is in
+[`ios-av1-hardware-evidence-2026-11-05.md`](ios-av1-hardware-evidence-2026-11-05.md),
+including the four samples that were replayed and the six that were not.
+
+Short version, with the limits attached:
+
+| Check | Result on 2026-11-05 |
+| --- | --- |
+| AV1 8-bit SDR 4K60 → hardware | pass: 31/31 and 32/32 samples `hwdec-current=videotoolbox`, `vd: Decoder format … videotoolbox[nv12]` |
+| H.264 4K60 still hardware | pass (13/13 samples) — the injected `Avcodec` did not regress the other codecs |
+| Ten-bit AV1 (SDR) | plays on the native AVPlayer path with a correct picture; its VideoToolbox state is **unavailable**, not inferred |
+| 1080p / 4K30 AV1, 8K AV1, 3422×2160, HLG, Dolby Vision | not measured this round |
+| 15/30-minute stability, thermal, A/V sync | not measured |
+| Signed release bundle re-test | identity verified; not re-measured on device |
+
+An installable build that omits the AV1 decoder is no longer possible: both build
+scripts and CI fail instead of shipping one.

@@ -147,6 +147,7 @@ class VideoDetailController extends GetxController
   int? nativeWidth;
   int? nativeHeight;
   String? nativeFrameRate;
+  int? nativeQuality;
 
   /// What the native layer reports it is presenting, for the UI to state
   /// honestly whether the picture is HDR.
@@ -266,6 +267,43 @@ class VideoDetailController extends GetxController
 
   // 预设的解码格式
   late List<VideoDecodeFormatType> preferCodecs = Pref.preferCodecs;
+
+  /// Whether this source has already used its one codec fallback.
+  ///
+  /// The bound is the point. A recovery that may run again whenever it fails is
+  /// two codecs taking turns, and the user sees a stream that restarts forever.
+  bool _av1FallbackTried = false;
+  String? _av1FallbackSourceKey;
+
+  /// One bounded attempt to stop decoding AV1 on the CPU.
+  ///
+  /// A 4K AV1 stream on the CPU is heat and dropped frames, so it is not left
+  /// running in silence: switch to the next codec in the user's own order, at
+  /// the same quality, once per source. The stored preference is *not* changed -
+  /// the next video tries AV1 again, because one stream falling back says
+  /// nothing about the decoder.
+  void _onAv1SoftwareSustained() {
+    if (!plPlayerController.av1SoftwareSustained.value) return;
+    if (isFileSource || plPlayerController.isLive) return;
+    final key = '$bvid:${cid.value}';
+    if (_av1FallbackSourceKey != key) {
+      _av1FallbackSourceKey = key;
+      _av1FallbackTried = false;
+    }
+    if (_av1FallbackTried) return;
+    if (!preferCodecs.contains(VideoDecodeFormatType.AV1)) return;
+    final alternatives = preferCodecs
+        .where((e) => e != VideoDecodeFormatType.AV1)
+        .toList();
+    if (alternatives.isEmpty) return;
+    _av1FallbackTried = true;
+    preferCodecs = alternatives;
+    PlaybackDiagnostics.record(
+      'av1-fallback',
+      'retrying source=$key without AV1 order=$alternatives',
+    );
+    _queryVideoUrl(true, false);
+  }
 
   bool get showReply => isFileSource
       ? false
@@ -476,6 +514,9 @@ class VideoDetailController extends GetxController
   @override
   void onInit() {
     super.onInit();
+    // Watches for AV1 falling back to the CPU; see [_onAv1SoftwareSustained].
+    plPlayerController.av1SoftwareSustained
+        .addListener(_onAv1SoftwareSustained);
     args = Get.arguments;
     videoType = args['videoType'];
     if (videoType == VideoType.pgc) {
@@ -828,6 +869,10 @@ class VideoDetailController extends GetxController
       width: video.width,
       height: video.height,
       frameRate: video.frameRate,
+      // The quality id travels with the rendition: the native side needs it to
+      // tell an HDR rung from a ten-bit SDR one, which the codec string alone
+      // cannot say.
+      quality: video.id,
       startPosition: startPosition,
       autoPlay: autoPlay,
       rate: rate,
@@ -851,6 +896,7 @@ class VideoDetailController extends GetxController
     nativeWidth = request.width;
     nativeHeight = request.height;
     nativeFrameRate = request.frameRate;
+    nativeQuality = request.quality;
   }
 
   /// 更新画质、音质
@@ -947,6 +993,7 @@ class VideoDetailController extends GetxController
       nativeWidth: nativeWidth,
       nativeHeight: nativeHeight,
       nativeFrameRate: nativeFrameRate,
+      nativeQuality: nativeQuality,
       sourceKey: nativeSourceKey,
       duration: data.timeLength == null
           ? null
@@ -1073,6 +1120,7 @@ class VideoDetailController extends GetxController
     nativeWidth = null;
     nativeHeight = null;
     nativeFrameRate = null;
+    nativeQuality = null;
     hdrPlaybackInfo.value = null;
     lastRenditionFallback.value = null;
     try {
@@ -1215,7 +1263,14 @@ class VideoDetailController extends GetxController
             'size=${selected.video.width}x${selected.video.height} '
             'fps=${selected.video.frameRate} '
             'fallback=${selected.fallback?.reason.name ?? 'none'} '
-            'accept=${response.acceptQuality}',
+            'accept=${response.acceptQuality} '
+            // What the ladder actually carried at that rung, next to what
+            // support_formats claims for it. The two disagree: the server
+            // reports one "best" codec per quality while the DASH list has a
+            // variant per codec, so a decision made from support_formats alone
+            // can miss an AV1 variant that is right there.
+            'variants=${dash.video!.where((e) => e.id == selected.video.id).map((e) => e.codecs).toList()} '
+            'declared=${selected.format.codecs}',
       );
       // One notice per switch, and only when the result is not what was asked
       // for. A silent downgrade is the failure this exists to prevent.
@@ -1550,6 +1605,8 @@ class VideoDetailController extends GetxController
     if (isFileSource) {
       cacheLocalProgress();
     }
+    plPlayerController.av1SoftwareSustained
+        .removeListener(_onAv1SoftwareSustained);
     introScrollCtr?.dispose();
     introScrollCtr = null;
     tabCtr.dispose();

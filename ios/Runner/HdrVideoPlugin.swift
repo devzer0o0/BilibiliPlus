@@ -1,7 +1,9 @@
 import AVFoundation
 import AVKit
+import CoreMedia
 import Flutter
 import UIKit
+import VideoToolbox
 
 /// Native HDR playback for iOS.
 ///
@@ -81,6 +83,31 @@ final class HdrVideoPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       "stage": "handle",
       "detail": call.method,
     ])
+
+    if call.method == "codecCapability" {
+      // Which sample entries this device can hand to a hardware decoder.
+      //
+      // The app otherwise has to guess: it preferred AV1 everywhere, and on a
+      // build whose Avcodec lacks the AV1 VideoToolbox backport mpv silently
+      // decoded a 2160p stream on the CPU (`hwdec=no` in every sample). Asking
+      // VideoToolbox directly is what lets the codec order match reality
+      // instead of the catalogue.
+      result([
+        "av1": VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1),
+        "hevc": VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC),
+        "h264": VTIsHardwareDecodeSupported(kCMVideoCodecType_H264),
+      ])
+      return
+    }
+
+    if call.method == "av1DecoderProbe" {
+      // What the loaded FFmpeg can do for AV1, asked of the loaded FFmpeg.
+      // Separate from `codecCapability` above, which only asks the chip: a
+      // device that answers "yes" there still decodes on the CPU when the app
+      // shipped the stock Avcodec.
+      result(Av1DecoderProbe.describe())
+      return
+    }
 
     if call.method == "hdrCapability" {
       // Whether this device can present extended range at all. A simulator, or
@@ -252,6 +279,7 @@ final class HdrVideoPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       width: args["width"] as? Int,
       height: args["height"] as? Int,
       frameRate: (args["frameRate"] as? String).flatMap(Double.init),
+      quality: args["quality"] as? Int,
       declaredVideoRange: args["videoRange"] as? String
     )
   }
@@ -282,6 +310,9 @@ final class HdrVideoSession: NSObject {
     let width: Int?
     let height: Int?
     let frameRate: Double?
+    /// The catalogue's quality id, which is what says whether this rendition is
+    /// an HDR rung when the init segment carries no `colr` box.
+    let quality: Int?
     /// VIDEO-RANGE the caller already established for this rendition (SDR, PQ,
     /// HLG), or nil when it is not known. Never invented here.
     let declaredVideoRange: String?
@@ -387,6 +418,7 @@ final class HdrVideoSession: NSObject {
     width: nil,
     height: nil,
     frameRate: nil,
+    quality: nil,
     declaredVideoRange: nil
   )
   /// Audio-only presentation: one AVPlayer, one item, no video track.
@@ -651,30 +683,13 @@ final class HdrVideoSession: NSObject {
   /// it is limited to HEVC/AV1 ten-bit, which the catalogue serves as HDR. A
   /// 10-bit SDR clip would be mislabelled by it; that is why the media read and
   /// the caller come first, and why the choice is recorded in the diagnostics.
+  /// Delegates to [ColorDescription.rangeWhenUnknown], which is where the rule
+  /// is unit-tested; this wrapper only supplies the media fields.
   static func codecRangeForTenBit(_ media: Media) -> String? {
-    guard let codecs = media.videoCodecs, !codecs.isEmpty else { return nil }
-    // Dolby Vision is signalled as its own sample entry (`dvh1` / `dvhe`), not
-    // as `hvc1`. Excluding it here meant a Dolby stream never reached the PQ
-    // fallback: it kept whatever the `colr` box said - measured as HLG on a
-    // profile-5 title - and AVFoundation rejected the item with
-    // CoreMediaErrorDomain -12927, leaving the player on its loading state.
-    //
-    // Every Dolby Vision profile Bilibili serves is PQ. Profiles 7 and 8 carry
-    // an HDR10 or HLG base layer, but the sample entry still declares PQ, and
-    // AVFoundation resolves the base layer from the RPU rather than from this
-    // attribute.
-    let dolby = codecs.hasPrefix("dvh1") || codecs.hasPrefix("dvhe")
-    if dolby { return "PQ" }
-    let hevc = codecs.hasPrefix("hev1") || codecs.hasPrefix("hvc1")
-    let av1 = codecs.hasPrefix("av01")
-    guard hevc || av1 else { return nil }
-    let tenBit = codecs.contains("hvc1.2") || codecs.contains("hev1.2")
-      || (av1 && codecs.split(separator: ".").count > 3
-            && codecs.split(separator: ".")[3] == "10")
-    guard tenBit else { return nil }
-    // HDR10/PQ is what the catalogue serves for these rungs; HLG would need the
-    // media to say so, which this path by definition cannot.
-    return "PQ"
+    ColorDescription.rangeWhenUnknown(
+      codecs: media.videoCodecs,
+      quality: media.quality
+    )
   }
 
   /// Which `VIDEO-RANGE` the playlist should declare.
@@ -1557,4 +1572,134 @@ final class HdrVideoPlatformView: NSObject, FlutterPlatformView {
   }
 
   func view() -> UIView { container }
+}
+
+// MARK: - AV1 decoder capability of the loaded FFmpeg
+
+/// Asks the FFmpeg build that this process actually loaded whether its AV1
+/// decoder has a VideoToolbox path.
+///
+/// Why this and not a build flag: the app can ship either Avcodec (the pod's,
+/// which has no AV1 VideoToolbox hwaccel, or the injected one, which does), and
+/// a build that quietly kept the wrong one reported AV1 as available while every
+/// frame was decoded on the CPU. The answer has to come from the loaded binary.
+///
+/// Why `dlsym` and no headers: there is no vendored FFmpeg header set in this
+/// repository, and inventing one to match a version this app does not link would
+/// be a second source of truth. The functions used here are the ABI-stable entry
+/// points of libavcodec/libavutil - strings and pointers in, strings and integers
+/// out - and the only struct touched is read through `avcodec_get_hw_config`,
+/// whose first three fields (pixel format, methods, device type) have been the
+/// same since FFmpeg 3.4.
+enum Av1DecoderProbe {
+  typealias FindDecoder = @convention(c) (UnsafePointer<CChar>)
+    -> UnsafeMutableRawPointer?
+  typealias GetHwConfig = @convention(c) (UnsafeMutableRawPointer?, Int32)
+    -> UnsafeMutableRawPointer?
+  typealias DeviceTypeByName = @convention(c) (UnsafePointer<CChar>) -> Int32
+  typealias DeviceTypeName = @convention(c) (Int32) -> UnsafePointer<CChar>?
+  typealias PixFmtByName = @convention(c) (UnsafePointer<CChar>) -> Int32
+  typealias PixFmtName = @convention(c) (Int32) -> UnsafePointer<CChar>?
+  typealias VersionFn = @convention(c) () -> UInt32
+  typealias ConfigurationFn = @convention(c) () -> UnsafePointer<CChar>?
+
+  /// `AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX`, from libavcodec/codec.h.
+  static let methodDeviceContext: Int32 = 0x01
+
+  private static func symbol<T>(
+    _ handle: UnsafeMutableRawPointer, _ name: String, as type: T.Type
+  ) -> T? {
+    guard let sym = dlsym(handle, name) else { return nil }
+    return unsafeBitCast(sym, to: T.self)
+  }
+
+  /// Everything the loaded FFmpeg can say about AV1, or the reason it cannot be
+  /// asked.
+  static func describe() -> [String: Any] {
+    guard let handle = dlopen(nil, RTLD_LAZY) else {
+      return ["available": false, "reason": "no image handle"]
+    }
+    guard
+      let find = symbol(handle, "avcodec_find_decoder_by_name",
+                        as: FindDecoder.self),
+      let getConfig = symbol(handle, "avcodec_get_hw_config",
+                             as: GetHwConfig.self),
+      let deviceByName = symbol(handle, "av_hwdevice_find_type_by_name",
+                                as: DeviceTypeByName.self),
+      let deviceName = symbol(handle, "av_hwdevice_get_type_name",
+                              as: DeviceTypeName.self),
+      let pixFmtByName = symbol(handle, "av_get_pix_fmt",
+                                as: PixFmtByName.self),
+      let pixFmtName = symbol(handle, "av_get_pix_fmt_name",
+                              as: PixFmtName.self)
+    else {
+      return ["available": false, "reason": "ffmpeg symbols not loaded"]
+    }
+
+    var result: [String: Any] = ["available": true]
+    if let versionFn = symbol(handle, "avcodec_version", as: VersionFn.self) {
+      let v = versionFn()
+      result["libraryVersion"] =
+        "\(v >> 16).\(((v >> 8) & 0xFF)).\((v & 0xFF))"
+    }
+    if let configFn = symbol(handle, "avcodec_configuration",
+                             as: ConfigurationFn.self),
+       let raw = configFn() {
+      let configuration = String(cString: raw)
+      // The configuration string of the binary that is in memory. It is a
+      // build-time claim rather than a registration, so it is recorded next to
+      // the hw_config enumeration instead of replacing it.
+      result["configurationHasAv1VideoToolbox"] =
+        configuration.contains("av1_videotoolbox")
+    }
+
+    let codec = "av1".withCString { find($0) }
+    guard let codec else {
+      result["decoderPresent"] = false
+      result["av1VideoToolbox"] = false
+      result["reason"] = "no av1 decoder in the loaded avcodec"
+      return result
+    }
+    result["decoderPresent"] = true
+
+    let videoToolboxType = "videotoolbox".withCString { deviceByName($0) }
+    let videoToolboxPix = "videotoolbox".withCString { pixFmtByName($0) }
+
+    var configs: [[String: Any]] = []
+    var hasVideoToolbox = false
+    var index: Int32 = 0
+    while true {
+      guard let raw = getConfig(codec, index) else { break }
+      let fields = raw.assumingMemoryBound(to: Int32.self)
+      let pixFmt = fields[0]
+      let methods = fields[1]
+      let deviceType = fields[2]
+      let pixName = pixFmtName(pixFmt).map { String(cString: $0) } ?? "?"
+      let devName = deviceName(deviceType).map { String(cString: $0) } ?? "none"
+      configs.append([
+        "pixFmt": pixName,
+        "deviceType": devName,
+        "methods": Int(methods),
+      ])
+      // Match on the device type, plus the pixel-format family by name.
+      //
+      // The exact enum value does not survive this comparison: libavutil answers
+      // `videotoolbox` to `av_get_pix_fmt` while the hw config carries the same
+      // format under its `videotoolbox_vld` alias, so an equality test reported
+      // "no AV1 VideoToolbox hwaccel" for a library that plainly has one - and
+      // that answer demoted AV1 on a device that decodes it in hardware.
+      if deviceType == videoToolboxType && pixName.hasPrefix("videotoolbox") {
+        hasVideoToolbox = true
+      }
+      _ = videoToolboxPix
+      index += 1
+    }
+    result["hwConfigs"] = configs
+    result["av1VideoToolbox"] = hasVideoToolbox
+    if !hasVideoToolbox {
+      result["reason"] =
+        "the loaded avcodec registers no videotoolbox hwaccel for av1"
+    }
+    return result
+  }
 }
