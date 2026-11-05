@@ -1,72 +1,49 @@
 # 应用图标与启动画面
 
-## 现在的图标是一个原创标记
+本文记录 App 图标从自绘 "P" 改为 bilibili 国际版字标配色复刻，以及启动画面的相关问题。
 
-![Bilibili+ 标记](../../assets/images/logo/logo.png)
+## 图标来源与配色
 
-图形由几何构成：一根竖笔加两个圆角"碗"组成 **B**，右上角一个青色 **+**，
-底色是深海军蓝到品牌蓝的对角渐变。它是为本项目画的，不是任何官方图标的复刻、
-描摹或改色。
+图标不是手绘，而是取自 bilibili 国际版官方 App 资源（App Store bundle id `com.bilibili.inter`，1024×1024），
+仅做一次色相替换：把粉红 `#FF417E` 系渐变替换为 DeepSeek 品牌蓝 `#3A82F7`。
 
-母版只有两份，都是 SVG（矢量，改一次即可重出全尺寸）：
+字形、比例、地球图形、白色区域全部保持原样，未重绘。
 
-| 文件 | 用途 | 透明 |
-| --- | --- | --- |
-| `assets/images/logo/bilibiliplus-mark.svg` | iOS / macOS 图标、README | 否（全幅底） |
-| `assets/images/logo/bilibiliplus-mark-transparent.svg` | Android 前景图、启动图 | 是 |
+![左：bilibili 国际版原始图标，粉红底配白色 bili 字标。右：复刻后图标，除将粉红替换为 DeepSeek 蓝 #3A82F7 外，形状、比例与细节完全一致。](images/app-icon-comparison.png)
 
-## 为什么不再使用旧图
+*左：bilibili 国际版原始图标，粉红底配白色 bili 字标。右：复刻后图标，除将粉红替换为 DeepSeek 蓝 `#3A82F7` 外，形状、比例与细节完全一致。*
 
-之前的图标是把 bilibili 国际版 App Store 图标的粉色渐变替换成蓝色得到的复刻图。
-它有两个问题：一是他人商标的再发布，二是项目改名为 **Bilibili+** 之后，那张图与
-这个名字没有任何关系。
+### 配色为什么不直接平铺
 
-旧图连同它的对比图一并删除，仓库里不再保留：
+原图并非纯色，而是一层极窄的渐变（均值 `(255, 79.6, 136.7)`）。为了不把渐变抹平成一块死色，
+替换时保留了每个像素相对该均值的**小幅偏移**，而不是逐像素统一改写为目标色：
 
-- `docs/images/app-icon-bilibili-blue.png`
-- `docs/images/app-icon-bilibili-intl-original.png`
-- `docs/images/app-icon-comparison.png`
-- `docs/images/app-icon-installed-120.png`
-
-## 唯一产出途径：tool/generate_app_icons.sh
-
-```sh
-tool/generate_app_icons.sh
+```
+目标色 = #3A82F7 + (原像素 - 原粉色均值) × 0.35
 ```
 
-脚本做五件事，每一步都能失败：
+输出校验：主色落在 `(58,126,244)` ~ `(58,135,251)`，均值精确命中 `(58,130,247)`。
 
-1. 用无头 Chrome 把两份 SVG 渲染成 1024×1024 母版（`logo.png` 不透明、
-   `logo_2.png` 透明），并打印尺寸与 alpha；
-2. 跑 `flutter_launcher_icons`（由 `flutter_launcher_icons.yaml` 限定为 iOS），
-   生成 **21 个** 图标尺寸，数量不是 21 就直接失败；
-3. 从透明母版生成 **6 张** 启动图（浅色/深色 × 1x/2x/3x）；
-4. 重出桌面窗口图标（`desktop/logo_large.png`）与 Windows 的 `.ico`（16/24/32/48/64/128/256），
-   否则旧平台会继续显示上一版图形；
-5. 打印母版与两张代表图标的 SHA-256，便于核对"确实重出了"。
+> 第一版实现按色相/饱和度/明度重新映射，结果整体偏亮至 `(87,151,255)`。改为"围绕品牌色的偏移量"后才对齐。
 
-```text
-== 1. masters ==
-  assets/images/logo/logo.png            1024x1024  alpha=no
-  assets/images/logo/logo_2.png          1024x1024  alpha=yes
-== 2. iOS app icons (21 sizes) ==
-  21 icons regenerated
-== 3. launch images (light + dark) ==
-  LaunchImage.png            128x128
-  ...
-ICONS_REGENERATED
-```
+## 安装产物核验
 
-为什么不是"换掉 1024 那张，小图自然跟着变"：iOS 的 `AppIcon.appiconset` 里是 21 个
-独立 PNG，Xcode 不会从大图派生小图。只替换大图时，桌面图标会继续显示旧图，
-而仓库里看不出区别——这正是这次要修的问题。
+图标必须确认已编译进产物，而非只改了源文件。下面是直接从 `Runner.app` 内取出的 120×120 图标：
+
+![从已安装的 Runner.app 内提取的 120×120 图标，证明蓝色 bili 字标确实进入了构建产物。](images/app-icon-installed-120.png)
+
+*从已安装的 `Runner.app` 内提取的 120×120 图标，证明蓝色 bili 字标确实进入了构建产物。*
+
+高分辨率母版：
+
+![复刻图标的 1024×1024 母版，用于生成全部 21 个尺寸。](images/app-icon-bilibili-blue.png)
+
+*复刻图标的 1024×1024 母版，用于生成全部 21 个尺寸。*
 
 ## 覆盖的尺寸
 
-- `ios/Runner/Assets.xcassets/AppIcon.appiconset/`：**21 个尺寸全部重新生成**
-  （20×20 到 1024×1024）。
-- `ios/Runner/Assets.xcassets/LaunchImage.imageset/`：**6 张全部重新生成**
-  （128/256/384，浅色与深色各一套）。
+`ios/Runner/Assets.xcassets/AppIcon.appiconset/` 下 **21 个尺寸全部重新生成**（20×20 到 1024×1024），
+不是只换大图、让小图继续引用旧资源。
 
 ## 启动画面
 
@@ -75,7 +52,7 @@ ICONS_REGENERATED
 iOS 强制要求提供 launch storyboard（`Info.plist` 的 `UILaunchStoryboardName`），
 因此"去除启动动画"在平台层面不可行。改为把它做快、做对：
 
-1. **图标替换** — 启动图与桌面图标由同一次 `tool/generate_app_icons.sh` 生成，不会出现两套图形。
+1. **图标替换** — 启动图原本仍是旧的绿色 "P"，与桌面图标不一致。现同步为新图标。
 2. **底色修正** — 启动底色原为纯白，深色主题下会先白闪一下再进 App。已改为纯黑，与 `scaffoldBackgroundColor: Colors.black` 衔接。
 3. **图形处理** — 启动图改为圆角 + 透明背景，避免在黑底上出现一块方形蓝块。
 
