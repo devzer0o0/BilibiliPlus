@@ -1,5 +1,5 @@
 <div align="center">
-    <img width="180" height="180" src="assets/images/logo/logo.png" alt="PiliPlus logo">
+    <img width="180" height="180" src="assets/images/logo/logo.png" alt="Bilibili+ logo">
     <h1>Bilibili+</h1>
     <p><b>A third-party Bilibili client tuned for iPhone Air</b></p>
     <p>A fork of <a href="https://github.com/bggRGjQaUbCoE/PiliPlus">PiliPlus</a></p>

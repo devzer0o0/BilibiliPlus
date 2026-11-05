@@ -1,5 +1,5 @@
 <div align="center">
-    <img width="180" height="180" src="assets/images/logo/logo.png" alt="PiliPlus logo">
+    <img width="180" height="180" src="assets/images/logo/logo.png" alt="Bilibili+ logo">
     <h1>Bilibili+</h1>
     <p><b>为 iPhone Air 深度优化的 B 站第三方客户端</b></p>
     <p>由 <a href="https://github.com/bggRGjQaUbCoE/PiliPlus">PiliPlus</a> 分叉而来</p>
