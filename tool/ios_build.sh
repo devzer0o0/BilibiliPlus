@@ -40,12 +40,29 @@ echo "== 1. build ($MODE) =="
 # `flutter build ios` treats a bare KEY=VALUE after the flags as a *target*
 # name ("Target file DEVELOPMENT_TEAM=... not found"), so the team is passed to
 # xcodebuild through FLUTTER_XCODE_*, which Flutter forwards verbatim.
+# Version and build number come from pubspec unless the caller overrides them.
+#
+# They used to be a hardcoded "0.0.1" and a default build number of 1, so every
+# build of every version installed itself over the previous one as the same app
+# version - which makes "which build is on the phone" unanswerable and hides a
+# failed install.
+PUB_VERSION="$(sed -n 's/^version:[[:space:]]*\([0-9][0-9.]*\)+\([0-9][0-9]*\).*/\1 \2/p' "$ROOT/pubspec.yaml" | head -1)"
+[ -n "$PUB_VERSION" ] || { echo "BLOCKED_TOOLING: no 'version: X.Y.Z+N' in pubspec.yaml" >&2; exit 4; }
+BUILD_NAME="${PILIPLUS_BUILD_NAME:-${PUB_VERSION%% *}}"
+BUILD_NUMBER="${PILIPLUS_BUILD_NUMBER:-${PUB_VERSION##* }}"
+echo "  version $BUILD_NAME ($BUILD_NUMBER)"
+
 LOG="$(mktemp -t pilipilus-ios-build)"
 ( cd "$ROOT" && \
     FLUTTER_XCODE_DEVELOPMENT_TEAM="$TEAM" \
     FLUTTER_XCODE_CODE_SIGN_STYLE=Automatic \
     flutter build ios --"$MODE" \
-      --build-name="${PILIPLUS_BUILD_NAME:-0.0.1}" ) 2>&1 | tee "$LOG"
+      --build-name="$BUILD_NAME" \
+      --build-number="$BUILD_NUMBER" \
+      --dart-define="pili.name=$BUILD_NAME" \
+      --dart-define="pili.code=$BUILD_NUMBER" \
+      --dart-define="pili.hash=$(git -C "$ROOT" rev-parse HEAD)" \
+      --dart-define="pili.time=$(date +%s)" ) 2>&1 | tee "$LOG"
 STATUS=${PIPESTATUS[0]}
 APP="$ROOT/build/ios/iphoneos/Runner.app"
 if [ "$STATUS" != "0" ] || [ ! -d "$APP" ]; then
