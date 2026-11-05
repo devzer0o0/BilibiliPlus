@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="560" viewBox="0 0 1160 560" role="img" aria-label="PiliPlus on iPhone Air: playback pipeline">
+  <defs>
+    <style>
+      .bg { fill: #0f1117; }
+      .card { fill: #171a23; stroke: #2a2f3d; stroke-width: 1.5; rx: 14; }
+      .lane { fill: #1d2230; stroke: #2f3646; stroke-width: 1.2; rx: 12; }
+      .title { fill: #f2f4f8; font: 600 22px -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+      .h2 { fill: #e8ebf2; font: 600 16px -apple-system, "SF Pro Text", "PingFang SC", sans-serif; }
+      .body { fill: #aab2c5; font: 400 13px -apple-system, "SF Pro Text", "PingFang SC", sans-serif; }
+      .mono { fill: #8fd4ff; font: 500 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .tag { fill: #0f1117; font: 600 11px -apple-system, "PingFang SC", sans-serif; }
+      .arrow { stroke: #4a5468; stroke-width: 1.8; fill: none; marker-end: url(#a); }
+      .ok { fill: #1d3a2b; stroke: #2f6f4f; stroke-width: 1.2; rx: 10; }
+      .warn { fill: #3a2f1b; stroke: #6f5a2f; stroke-width: 1.2; rx: 10; }
+      .okt { fill: #7fe0a8; font: 600 12px -apple-system, "PingFang SC", sans-serif; }
+      .warnt { fill: #f0c674; font: 600 12px -apple-system, "PingFang SC", sans-serif; }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a5468"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1160" height="560" rx="18"/>
+  <text class="title" x="36" y="52">iPhone Air 播放链路</text>
+  <text class="body" x="36" y="76">选流之后，两条后端各走各的硬解通路；解不出来才回退，回退是有界且可见的</text>
+
+  <!-- Source -->
+  <rect class="card" x="36" y="104" width="188" height="120"/>
+  <text class="h2" x="56" y="134">选流</text>
+  <text class="body" x="56" y="158">用户画质 / 帧率 / 动态范围</text>
+  <text class="body" x="56" y="180">优先 AV1，其次 HEVC / H.264</text>
+  <text class="mono" x="56" y="204">rendition → 实际变体</text>
+
+  <!-- mpv lane -->
+  <rect class="lane" x="268" y="104" width="392" height="176"/>
+  <text class="h2" x="288" y="134">mpv + FFmpeg（AV1 VideoToolbox）</text>
+  <text class="body" x="288" y="158">AV1 / H.264 / HEVC · 8-bit SDR</text>
+  <text class="mono" x="288" y="182">hwdec=videotoolbox</text>
+  <text class="mono" x="288" y="202">hwdec-codecs=all</text>
+  <text class="body" x="288" y="228">帧格式即 CVPixelBuffer</text>
+  <text class="body" x="288" y="248">输出按显示区缩放，不保留 4K 纹理</text>
+  <rect class="ok" x="288" y="258" width="150" height="24"/>
+  <text class="okt" x="298" y="275">videotoolbox[nv12]</text>
+
+  <!-- native lane -->
+  <rect class="lane" x="268" y="304" width="392" height="176"/>
+  <text class="h2" x="288" y="334">AVPlayerLayer（原生 HDR）</text>
+  <text class="body" x="288" y="358">HDR10 / HLG · 十位 · 杜比视界</text>
+  <text class="mono" x="288" y="382">fMP4 + DASH SegmentBase</text>
+  <text class="body" x="288" y="408">音视频独立轨由同一时钟驱动</text>
+  <text class="body" x="288" y="428">VIDEO-RANGE 取自 colr / 片源档位</text>
+  <rect class="warn" x="288" y="438" width="196" height="24"/>
+  <text class="warnt" x="298" y="455">硬解状态由系统持有，App 不伪造</text>
+
+  <!-- GPU / display -->
+  <rect class="card" x="700" y="104" width="190" height="176"/>
+  <text class="h2" x="720" y="134">Flutter 纹理</text>
+  <text class="body" x="720" y="158">仅 SDR 路径</text>
+  <text class="body" x="720" y="180">1260 × 709 量级</text>
+  <text class="mono" x="720" y="204">TextureGL resize</text>
+
+  <rect class="card" x="700" y="304" width="190" height="176"/>
+  <text class="h2" x="720" y="334">AVPlayerLayer</text>
+  <text class="body" x="720" y="358">EDR 直通</text>
+  <text class="body" x="720" y="380">HDR 模式按当前输出</text>
+  <text class="mono" x="720" y="404">availableHDRModes</text>
+
+  <!-- device -->
+  <rect class="card" x="936" y="104" width="188" height="376"/>
+  <text class="h2" x="956" y="134">iPhone Air</text>
+  <text class="body" x="956" y="158">iPhone18,4</text>
+  <text class="body" x="956" y="182">420 × 912 逻辑分辨率</text>
+  <text class="body" x="956" y="206">A19 Pro · VideoToolbox</text>
+  <text class="body" x="956" y="238">AV1 硬解已实测</text>
+  <text class="body" x="956" y="260">H.264 / HEVC 硬解</text>
+  <text class="body" x="956" y="282">杜比视界 / HDR</text>
+  <text class="body" x="956" y="316">播放中每帧可查</text>
+  <text class="mono" x="956" y="338">hwdec-current</text>
+  <text class="body" x="956" y="366">未知不当作支持</text>
+  <text class="body" x="956" y="388">也不当作不支持</text>
+
+  <!-- arrows -->
+  <path class="arrow" d="M 224 164 L 262 164"/>
+  <path class="arrow" d="M 224 200 L 262 380"/>
+  <path class="arrow" d="M 660 180 L 694 180"/>
+  <path class="arrow" d="M 660 392 L 694 392"/>
+  <path class="arrow" d="M 890 190 L 930 190"/>
+  <path class="arrow" d="M 890 392 L 930 392"/>
+
+  <text class="body" x="36" y="524">证据：docs/ios-av1-hardware-evidence-2026-11-05.md · 构建校验：tool/ios_av1_package.sh</text>
+  <text class="body" x="36" y="546">绿色 = 本项目实测通过；黄色 = 状态由系统持有或尚未实测，README 不代它作证</text>
+</svg>
