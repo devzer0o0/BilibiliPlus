@@ -23,7 +23,21 @@ abstract class CommonListController<R, T> extends CommonController<R, T> {
   Future<void> queryData([bool isRefresh = true]) async {
     if (isLoading || (!isRefresh && isEnd)) return;
     isLoading = true;
-    final LoadingState<R> res = await customGetData();
+    final LoadingState<R> res;
+    try {
+      res = await customGetData();
+    } catch (err) {
+      // A fetch that throws used to leave the page on its skeleton forever: the
+      // state stayed Loading, so there was neither content nor an error and the
+      // only way out was to kill the app. Whatever went wrong - a timeout, a
+      // payload the parser did not expect - the list has to land in a state the
+      // user can act on.
+      isLoading = false;
+      if (!(isRefresh && handleError(err.toString()))) {
+        loadingState.value = Error(err.toString());
+      }
+      return;
+    }
     if (res case Success(:final response)) {
       if (!customHandleResponse(isRefresh, res)) {
         final dataList = getDataList(response);

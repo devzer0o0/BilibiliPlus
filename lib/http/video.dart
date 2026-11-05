@@ -164,7 +164,15 @@ abstract final class VideoHttp {
     );
     if (res.data['code'] == 0) {
       final list = <RcmdVideoItemAppModel>[];
-      for (final i in res.data['data']['items']) {
+      // 'items' is not guaranteed: an answer can come back with code 0 and no
+      // data block at all, and indexing straight into it threw *outside* any
+      // handler - one of the ways the home feed ended up on a skeleton that
+      // never resolved.
+      final items = res.data['data']?['items'];
+      if (items is! List) {
+        return Error(res.data['data']?['message'] ?? '推荐接口没有返回内容');
+      }
+      for (final i in items) {
         // 屏蔽推广和拉黑用户
         if (_filterAppRcmd(i)) continue;
         final videoItem = RcmdVideoItemAppModel.fromJson(i);
