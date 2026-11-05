@@ -1,14 +1,15 @@
 <div align="center">
     <img width="180" height="180" src="assets/images/logo/logo.png" alt="PiliPlus logo">
-    <h1>PiliPlus</h1>
+    <h1>Bilibili+</h1>
     <p><b>A third-party Bilibili client tuned for iPhone Air</b></p>
+    <p>A fork of <a href="https://github.com/bggRGjQaUbCoE/PiliPlus">PiliPlus</a></p>
     <p>AV1 / HEVC / H.264 hardware decoding · HDR10 / HLG · Dolby Vision</p>
 
 [中文](README.md) | English
 
-![GitHub repo size](https://img.shields.io/github/repo-size/bggRGjQaUbCoE/PiliPlus)
-![GitHub Repo stars](https://img.shields.io/github/stars/bggRGjQaUbCoE/PiliPlus)
-![GitHub all releases](https://img.shields.io/github/downloads/bggRGjQaUbCoE/PiliPlus/total)
+![GitHub repo size](https://img.shields.io/github/repo-size/devzer0o0/BilibiliPlus)
+![GitHub Repo stars](https://img.shields.io/github/stars/devzer0o0/BilibiliPlus)
+![GitHub all releases](https://img.shields.io/github/downloads/devzer0o0/BilibiliPlus/total)
 
 <img src="assets/screenshots/510shots_so.png" width="32%" alt="home" />
 <img src="assets/screenshots/174shots_so.png" width="32%" alt="player" />
@@ -139,7 +140,7 @@ bundle. Any failure stops the build.
 
 ## Download
 
-Download a build from [Releases](https://github.com/bggRGjQaUbCoE/PiliPlus/releases),
+Download a build from [Releases](https://github.com/devzer0o0/BilibiliPlus/releases),
 or clone the repository and build it locally. iOS builds need your own signing
 identity; this repository ships no certificate, profile or credential.
 

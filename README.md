@@ -1,14 +1,15 @@
 <div align="center">
     <img width="180" height="180" src="assets/images/logo/logo.png" alt="PiliPlus logo">
-    <h1>PiliPlus</h1>
+    <h1>Bilibili+</h1>
     <p><b>为 iPhone Air 深度优化的 B 站第三方客户端</b></p>
+    <p>由 <a href="https://github.com/bggRGjQaUbCoE/PiliPlus">PiliPlus</a> 分叉而来</p>
     <p>AV1 / HEVC / H.264 硬件解码 · HDR10 / HLG · 杜比视界</p>
 
 中文 | [English](README.en.md)
 
-![GitHub repo size](https://img.shields.io/github/repo-size/bggRGjQaUbCoE/PiliPlus)
-![GitHub Repo stars](https://img.shields.io/github/stars/bggRGjQaUbCoE/PiliPlus)
-![GitHub all releases](https://img.shields.io/github/downloads/bggRGjQaUbCoE/PiliPlus/total)
+![GitHub repo size](https://img.shields.io/github/repo-size/devzer0o0/BilibiliPlus)
+![GitHub Repo stars](https://img.shields.io/github/stars/devzer0o0/BilibiliPlus)
+![GitHub all releases](https://img.shields.io/github/downloads/devzer0o0/BilibiliPlus/total)
 
 <img src="assets/screenshots/510shots_so.png" width="32%" alt="home" />
 <img src="assets/screenshots/174shots_so.png" width="32%" alt="player" />
@@ -204,7 +205,7 @@ tool/verify_release_constraints.sh build/ios/iphoneos/Runner.app
 
 ## 下载
 
-可以从 [Releases](https://github.com/bggRGjQaUbCoE/PiliPlus/releases) 下载，或克隆仓库拉取代码后在本地编译。
+可以从 [Releases](https://github.com/devzer0o0/BilibiliPlus/releases) 下载，或克隆仓库拉取代码后在本地编译。
 
 iOS 需要自备签名（见上文的构建脚本）；仓库不附带证书、描述文件或任何凭据。
 
@@ -236,10 +237,10 @@ iOS 需要自备签名（见上文的构建脚本）；仓库不附带证书、�
 
 ## Star History
 
-<a href="https://star-history.dera.page/#bggRGjQaUbCoE/PiliPlus&Date">
+<a href="https://star-history.dera.page/#devzer0o0/BilibiliPlus&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=bggRGjQaUbCoE/PiliPlus&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=bggRGjQaUbCoE/PiliPlus&type=Date" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=bggRGjQaUbCoE/PiliPlus&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=devzer0o0/BilibiliPlus&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=devzer0o0/BilibiliPlus&type=Date" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=devzer0o0/BilibiliPlus&type=Date" />
  </picture>
 </a>
