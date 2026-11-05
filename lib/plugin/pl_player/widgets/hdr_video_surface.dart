@@ -61,6 +61,35 @@ class HdrPlaybackInfo {
   final int? bitDepth;
   final Map<Object?, Object?>? dolbyVision;
 
+  /// The Dolby Vision profile number from the configuration record, or null
+  /// when the stream carries no record or the field is absent.
+  ///
+  /// Profile 5 has no HDR10/HLG base layer, so its picture cannot be reproduced
+  /// without applying the RPU - the difference is encoding, not dynamic range.
+  /// The keys are not documented: CoreMedia surfaces the Dolby Vision record
+  /// in the format-description extensions under a key AVFoundation does not
+  /// publish, and the field names differ between OS versions. Every plausible
+  /// spelling is tried, and an unreadable record yields null rather than a
+  /// guess - see [HdrSupport.supportsDolbyVisionProfile], where null means
+  /// "do not downgrade".
+  int? get dolbyVisionProfile {
+    final map = dolbyVision;
+    if (map == null) return null;
+    for (final key in const [
+      'dv_profile',
+      'dvProfile',
+      'profile',
+      'DVProfile',
+      'dv_profile_id',
+    ]) {
+      final raw = map[key];
+      if (raw is num) return raw.toInt();
+      final parsed = int.tryParse(raw?.toString() ?? '');
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
   final int width;
   final int height;
 

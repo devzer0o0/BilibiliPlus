@@ -211,12 +211,32 @@ abstract final class VideoUtils {
     if (codecs.startsWith('hev1.2') || codecs.startsWith('hvc1.2')) {
       return true;
     }
+    // Dolby Vision uses its own sample entry: `dvh1.05.09` is profile 05 /
+    // level 09 and always ten-bit. Missing this classified a profile-5 stream
+    // as 8-bit, which routed it to mpv - a path that cannot apply the RPU.
+    if (codecs.startsWith('dvh1.') || codecs.startsWith('dvhe.')) {
+      return true;
+    }
     if (codecs.startsWith('av01.')) {
       // av01.P.LLT.DD... - the fourth dot-separated field is the bit depth.
       final parts = codecs.split('.');
       if (parts.length >= 4 && parts[3] == '10') return true;
     }
     return false;
+  }
+
+  /// The Dolby Vision profile in a sample-entry codec string, if any.
+  ///
+  /// `dvh1.05.09`: the field after the four-character code is the profile. It is
+  /// available before playback, which is what lets the caller route a Dolby
+  /// track to the native layer instead of guessing.
+  static int? dolbyVisionProfileOf(String? codecs) {
+    if (codecs == null || codecs.isEmpty) return null;
+    if (!codecs.startsWith('dvh1.') && !codecs.startsWith('dvhe.')) {
+      return null;
+    }
+    final parts = codecs.split('.');
+    return parts.length < 2 ? null : int.tryParse(parts[1]);
   }
 
   /// Whether a specific stream can be rendered by the current output path.

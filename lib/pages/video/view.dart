@@ -1248,6 +1248,11 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           videoDetailController.hdrPlaybackInfo.value = info;
+          // The profile is only known once the track is decoded, which is
+          // after selection. Profile 5 has no HDR10/HLG base layer, so this
+          // surface cannot reproduce it: saying so is the difference between a
+          // wrong picture the user can explain and one they cannot.
+          videoDetailController.reportDolbyVisionProfile(info.dolbyVisionProfile);
         });
       },
       // Keyed by rendition only: a rotation or a control-bar toggle rebuilds

@@ -63,6 +63,12 @@ enum RenditionFallbackReason {
   codecUnsupported,
   /// An HDR/Dolby Vision rung was available but the path cannot present it.
   hdrNotPresentable,
+  /// A Dolby Vision rung was available but only a profile the renderer cannot
+  /// reproduce. Profile 5 stores IPT-PQ-c2 samples with no HDR10/HLG base
+  /// layer, so a renderer that ignores the RPU shifts every colour (the
+  /// green/purple cast) - it is not a tone-mapping problem. Profiles 7 and 8
+  /// keep a compatible base and are not covered by this reason.
+  dolbyVisionUnsupportedProfile,
   /// Nothing at the requested resolution is playable.
   resolutionUnavailable,
 }
@@ -90,6 +96,8 @@ class RenditionFallback {
     RenditionFallbackReason.codecNotOffered => '该编码未提供，已切换同分辨率编码',
     RenditionFallbackReason.codecUnsupported => '该编码不支持，已切换同分辨率编码',
     RenditionFallbackReason.hdrNotPresentable => '当前设备不支持 HDR，已切换同分辨率 SDR',
+    RenditionFallbackReason.dolbyVisionUnsupportedProfile =>
+      '该杜比视界片源为 Profile 5，当前渲染路径无法正确还原色彩，已切换同分辨率档位',
     RenditionFallbackReason.resolutionUnavailable => '该分辨率暂不可播放，已降低一档',
   };
 }

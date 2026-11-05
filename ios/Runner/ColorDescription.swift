@@ -33,10 +33,47 @@ enum ColorDescription {
   static let primariesBT709 = 1
   static let primariesBT2020 = 9
 
+  /// The Dolby Vision configuration record (`dvcC` / `dvvC`).
+  ///
+  /// This is the only honest answer to "which profile is this", and the profile
+  /// is what decides whether the picture can be presented at all:
+  ///
+  /// - profile 5 has no HDR10 or HLG base layer. Its samples are IPT-PQ-c2, and
+  ///   the matrices needed to undo that live in the RPU, not in the bitstream
+  ///   header. Decoding it as ordinary HEVC therefore shifts every colour, which
+  ///   is the green/purple cast people see.
+  /// - profiles 7/8 carry a base layer a normal renderer can show, so they
+  ///   degrade gracefully to HDR10/HLG.
+  ///
+  /// Reading the box is not optional: the codec string alone cannot distinguish
+  /// them, since both are ten-bit HEVC.
+  struct DolbyVisionConfig: Equatable {
+    let versionMajor: Int
+    let versionMinor: Int
+    /// 4 = dvhe, 5 = dvh1, 6 = dvav, 7 = dva1, 8 = dvhe, 9 = dvh1.
+    let profile: Int
+    let level: Int
+    let rpuPresent: Bool
+    let elPresent: Bool
+    let blPresent: Bool
+
+    /// Whether an ordinary renderer can show a usable picture.
+    ///
+    /// Profile 5 is the one that cannot: with no compatible base layer, a
+    /// renderer that ignores the RPU is not "slightly off", it is wrong for the
+    /// whole frame. Profiles 7 and 8 fall back to their HDR10/HLG base.
+    var hasCompatibleBaseLayer: Bool { profile != 5 }
+
+    /// Profile 5 as described by Dolby; kept as a name for logs and UI.
+    var isProfile5: Bool { profile == 5 }
+  }
+
   struct Description: Equatable {
     let primaries: Primaries
     let transfer: Transfer
     let fullRange: Bool
+    /// Present only when the sample entry carried a Dolby Vision record.
+    var dolbyVision: DolbyVisionConfig?
 
     /// The `VIDEO-RANGE` attribute value, or nil when the media did not
     /// describe itself. nil stays nil: declaring SDR for an unlabelled stream
@@ -61,8 +98,16 @@ enum ColorDescription {
   static func read(_ data: Data) -> Description? {
     let bytes = [UInt8](data)
     var result: Description?
-    walk(bytes, 0, bytes.count, depth: 0, into: &result)
-    return result
+    var dv: DolbyVisionConfig?
+    walk(bytes, 0, bytes.count, depth: 0, into: &result, dv: &dv)
+    // The two records are independent: `dvcC` may sit before `colr`, and a
+    // stream can carry one without the other. Merge at the end instead of
+    // requiring a fixed order inside the sample entry.
+    if var described = result {
+      described.dolbyVision = dv
+      return described
+    }
+    return nil
   }
 
   private static let containers: Set<String> = ["moov", "trak", "mdia", "minf", "stbl"]
@@ -72,7 +117,8 @@ enum ColorDescription {
     _ start: Int,
     _ end: Int,
     depth: Int,
-    into result: inout Description?
+    into result: inout Description?,
+    dv: inout DolbyVisionConfig?
   ) {
     guard depth < 8 else { return }
     var offset = start
@@ -94,9 +140,9 @@ enum ColorDescription {
       let payload = offset + header
       let boxEnd = offset + boxSize
       if containers.contains(type) {
-        walk(bytes, payload, boxEnd, depth: depth + 1, into: &result)
+        walk(bytes, payload, boxEnd, depth: depth + 1, into: &result, dv: &dv)
       } else if type == "stsd" {
-        readSampleEntries(bytes, payload, boxEnd, into: &result)
+        readSampleEntries(bytes, payload, boxEnd, into: &result, dv: &dv)
       }
       offset = boxEnd
     }
@@ -106,7 +152,8 @@ enum ColorDescription {
     _ bytes: [UInt8],
     _ payload: Int,
     _ end: Int,
-    into result: inout Description?
+    into result: inout Description?,
+    dv: inout DolbyVisionConfig?
   ) {
     guard payload + 8 <= end else { return }
     let count = Int(be32(bytes, payload + 4))
@@ -118,7 +165,10 @@ enum ColorDescription {
       // A visual sample entry carries a 78-byte fixed header before its child
       // boxes (reserved, data_reference_index, pre_defined, width/height,
       // resolutions, frame_count, compressorname, depth, pre_defined).
-      readColr(bytes, offset + 8 + 78, offset + size, into: &result)
+      let entryChildren = offset + 8 + 78
+      let entryEnd = offset + size
+      readColr(bytes, entryChildren, entryEnd, into: &result)
+      readDolbyVision(bytes, entryChildren, entryEnd, into: &dv)
       offset += size
     }
   }
@@ -150,6 +200,61 @@ enum ColorDescription {
             fullRange: fullRange
           )
         }
+        return
+      }
+      offset += size
+    }
+  }
+
+  /// Reads `dvcC` / `dvvC` from a visual sample entry.
+  ///
+  /// Layout (all big-endian, after the 8-byte box header):
+  ///
+  ///   0..1   dv_version_major
+  ///   2..3   dv_version_minor
+  ///   byte 4, bits 7..1 = dv_profile, bit 0 = dv_level high bit
+  ///   byte 5, bits 7..2 = dv_level low bits, bit 1 = rpu, bit 0 = el
+  ///   byte 6, bit 7     = bl_present
+  ///
+  /// The first byte packs profile into 7 bits, which is why a naive read of a
+  /// whole byte yields a plausible but wrong number.
+  private static func readDolbyVision(
+    _ bytes: [UInt8],
+    _ start: Int,
+    _ end: Int,
+    into dv: inout DolbyVisionConfig?
+  ) {
+    var offset = start
+    while offset + 8 <= end {
+      let size = Int(be32(bytes, offset))
+      guard size >= 8, offset + size <= end else { return }
+      let type = fourCC(bytes, offset + 4)
+      if type == "dvcC" || type == "dvvC" {
+        let payload = offset + 8
+        // Need the version, the packed profile/level pair and the flag byte.
+        guard payload + 7 <= offset + size else { return }
+        let major = Int(be16(bytes, payload))
+        let minor = Int(be16(bytes, payload + 2))
+        let profileByte = Int(bytes[payload + 4])
+        let levelByte = Int(bytes[payload + 5])
+        let flagByte = Int(bytes[payload + 6])
+        let profile = profileByte >> 1
+        let level = ((profileByte & 0x01) << 5) | (levelByte >> 3)
+        let rpu = (levelByte & 0x04) != 0
+        let el = (levelByte & 0x02) != 0
+        let bl = (flagByte & 0x80) != 0
+        // A DV record with no `colr` box still says which profile this is,
+        // even though it does not describe a transfer function. Record it and
+        // leave the colour description unset rather than inventing one.
+        dv = DolbyVisionConfig(
+          versionMajor: major,
+          versionMinor: minor,
+          profile: profile,
+          level: level,
+          rpuPresent: rpu,
+          elPresent: el,
+          blPresent: bl
+        )
         return
       }
       offset += size

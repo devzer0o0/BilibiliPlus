@@ -152,6 +152,31 @@ class VideoDetailController extends GetxController
   /// honestly whether the picture is HDR.
   final Rxn<HdrPlaybackInfo> hdrPlaybackInfo = Rxn<HdrPlaybackInfo>();
 
+  /// The Dolby Vision profile of the stream currently playing, when it has one.
+  final RxnInt dolbyVisionProfile = RxnInt();
+
+  /// One notice per session for a Dolby Vision profile this path cannot
+  /// reproduce.
+  bool _reportedUnsupportedDolbyProfile = false;
+
+  /// Records the profile once the native track has been decoded.
+  ///
+  /// Profile 5 stores IPT-PQ-c2 samples with no HDR10/HLG base layer, so a
+  /// renderer that never applies the RPU shifts every colour. That is an
+  /// encoding limitation, not a dynamic-range one, so it is reported here -
+  /// where the real value exists - rather than guessed during selection.
+  void reportDolbyVisionProfile(int? profile) {
+    dolbyVisionProfile.value = profile;
+    if (profile == null) return;
+    PlaybackDiagnostics.record('dolby-vision', 'profile=$profile');
+    if (HdrSupport.supportsDolbyVisionProfile(profile)) return;
+    if (_reportedUnsupportedDolbyProfile) return;
+    _reportedUnsupportedDolbyProfile = true;
+    SmartDialog.showToast(
+      '该杜比视界片源为 Profile 5，当前渲染路径无法正确还原色彩，建议切换至 HDR 或 4K 档位',
+    );
+  }
+
   /// What remote playback this source can actually support.
   ///
   /// The native path serves HLS from a loopback bridge, so a receiver cannot
@@ -844,6 +869,10 @@ class VideoDetailController extends GetxController
       ..buffered.value = 0;
 
     firstVideo = findVideoByQa(currentVideoQa.code, setCodecs: true);
+    // Dolby Vision is allowed through here: switching quality takes this path
+    // rather than selectRendition, and refusing a profile-5 rung here is what
+    // made 杜比视界 unplayable. The defect was never the profile - it was the
+    // HLS variant declaring the wrong VIDEO-RANGE, fixed in HdrVideoPlugin.
     videoUrl = VideoUtils.getCdnUrl(firstVideo.playUrls);
 
     /// 根据currentAudioQa 重新设置audioUrl

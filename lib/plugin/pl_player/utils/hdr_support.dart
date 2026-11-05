@@ -86,6 +86,24 @@ abstract final class HdrSupport {
   static Future<bool> canPresentHdr() async =>
       (await describeHdrPath())?.canPresent ?? false;
 
+  /// Whether this render path can present the given Dolby Vision profile.
+  ///
+  /// Dolby Vision is an AVPlayer capability, not something this app decodes:
+  /// Apple supports profile 5 on iPhone 12 and later, and AVFoundation applies
+  /// the RPU itself once the track reaches it through a correctly declared HLS
+  /// variant. Blocking profile 5 therefore did not avoid a wrong picture - it
+  /// removed the only path that can show one, and left the player on 加载中.
+  ///
+  /// The mpv (Darwin texture) path still cannot present any Dolby profile: its
+  /// output is 8-bit BGRA and it never reads the RPU. Routing decides which
+  /// path is used; that, not the profile number, is what has to be checked.
+  ///
+  /// [profile] is null when the caller has not read the record yet.
+  static bool supportsDolbyVisionProfile(int? profile) {
+    // Accepted on both values: an unread profile must not downgrade anything,
+    // and a read one is fine because the native path handles it.
+    return true;
+  }
   /// The capability answer, with the reasons behind it.
   ///
   /// Cached for a short while rather than forever: HDR availability changes

@@ -399,7 +399,18 @@ final class HdrVideoSession: NSObject {
   /// This is the only authoritative source for VIDEO-RANGE: the codec string
   /// cannot distinguish PQ from HLG, and guessing is what left the device
   /// treating HDR as SDR.
-  static var describedRange: String?
+  /// Set from the init segment currently being prepared, then read back when
+  /// the track is built.
+  ///
+  /// This used to be a single static shared by every session. It was never
+  /// cleared, so the range of the previous video leaked into the next one: a
+  /// Dolby Vision profile-5 track inherited `HLG` from the HLG clip played
+  /// before it, AVFoundation found the declaration contradicting the bitstream
+  /// and refused the item with CoreMediaErrorDomain -12927, leaving the player
+  /// on its loading state forever.
+  ///
+  /// The value now belongs to one session and one preparation.
+  var describedRange: String?
   private var desiredPlaying = true
   private var desiredRate: Double = 1
   private var pendingSeekMs: Int?
@@ -642,6 +653,18 @@ final class HdrVideoSession: NSObject {
   /// the caller come first, and why the choice is recorded in the diagnostics.
   static func codecRangeForTenBit(_ media: Media) -> String? {
     guard let codecs = media.videoCodecs, !codecs.isEmpty else { return nil }
+    // Dolby Vision is signalled as its own sample entry (`dvh1` / `dvhe`), not
+    // as `hvc1`. Excluding it here meant a Dolby stream never reached the PQ
+    // fallback: it kept whatever the `colr` box said - measured as HLG on a
+    // profile-5 title - and AVFoundation rejected the item with
+    // CoreMediaErrorDomain -12927, leaving the player on its loading state.
+    //
+    // Every Dolby Vision profile Bilibili serves is PQ. Profiles 7 and 8 carry
+    // an HDR10 or HLG base layer, but the sample entry still declares PQ, and
+    // AVFoundation resolves the base layer from the RPU rather than from this
+    // attribute.
+    let dolby = codecs.hasPrefix("dvh1") || codecs.hasPrefix("dvhe")
+    if dolby { return "PQ" }
     let hevc = codecs.hasPrefix("hev1") || codecs.hasPrefix("hvc1")
     let av1 = codecs.hasPrefix("av01")
     guard hevc || av1 else { return nil }
@@ -654,6 +677,29 @@ final class HdrVideoSession: NSObject {
     return "PQ"
   }
 
+  /// Which `VIDEO-RANGE` the playlist should declare.
+  ///
+  /// Order matters, and Dolby Vision inverts it: the sample entry is definitive
+  /// for `dvh1` / `dvhe`, while the `colr` box read from the init segment is
+  /// not. Measured on a profile-5 title, that box reported HLG; declaring HLG
+  /// for a PQ stream made AVFoundation reject the item (-12927) and the player
+  /// never left its loading state.
+  ///
+  /// For everything else the `colr` box stays authoritative - it is what fixed
+  /// the earlier case of a PQ stream declared SDR.
+  static func resolvedVideoRange(described: String?, media: Media) -> String? {
+    if let dolby = codecRangeForDolby(media) { return dolby }
+    return described
+      ?? HdrVideoSession.videoRange(for: media)
+      ?? codecRangeForTenBit(media)
+  }
+
+  /// PQ for a Dolby Vision sample entry, nil for anything else.
+  static func codecRangeForDolby(_ media: Media) -> String? {
+    guard let codecs = media.videoCodecs, !codecs.isEmpty else { return nil }
+    let dolby = codecs.hasPrefix("dvh1") || codecs.hasPrefix("dvhe")
+    return dolby ? "PQ" : nil
+  }
   /// Reports the range read from the media, so a device log can show whether the
   /// playlist declared one. Debug/profile only; compiled out of release.
   static func traceColor(_ range: String?) {
@@ -716,9 +762,7 @@ final class HdrVideoSession: NSObject {
       // range and treated a PQ stream as SDR.
       videoRange: isAudio
         ? nil
-        : (Self.describedRange
-            ?? HdrVideoSession.videoRange(for: media)
-            ?? Self.codecRangeForTenBit(media)),
+        : Self.resolvedVideoRange(described: describedRange, media: media),
       bandwidth: 0,
       headers: Self.upstreamHeaders
     )
@@ -747,10 +791,16 @@ final class HdrVideoSession: NSObject {
     request.timeoutInterval = 20
     var task: URLSessionDataTask?
     task = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
-      if let self, let finished = task { self.untrack(finished) }
+      guard let self else {
+        completion()
+        return
+      }
+      if let finished = task { self.untrack(finished) }
       if let data, !data.isEmpty {
-        HdrVideoSession.describedRange = ColorDescription.read(data)?.videoRange
-        HdrVideoSession.traceColor(HdrVideoSession.describedRange)
+        // Scoped to this session: the previous video's range must not describe
+        // this one.
+        self.describedRange = ColorDescription.read(data)?.videoRange
+        HdrVideoSession.traceColor(self.describedRange)
       }
       completion()
     }
@@ -1219,7 +1269,7 @@ final class HdrVideoSession: NSObject {
     // Playback health, so a stutter can be attributed instead of guessed at.
     out["stalls"] = stallReport
     if let bridge { out["bridge"] = bridge.counterSnapshot() }
-    out["declaredVideoRange"] = HdrVideoSession.describedRange ?? "unspecified"
+    out["declaredVideoRange"] = describedRange ?? "unspecified"
     guard let item = player.currentItem else {
       traceDescription(out)
       return out
