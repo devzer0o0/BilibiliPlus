@@ -227,6 +227,29 @@ void main() {
     },
   );
 
+  test('cacheOnly applies late scores without another model call', () async {
+    final candidates = [f('BV1', 'A', 0), f('BV2', 'B', 1)];
+    final p = pipeline();
+    await p.rankFeatures(
+      features: candidates,
+      source: 'web',
+      accountScope: 'uid:1',
+      token: RecommendationSession().begin(),
+    );
+    expect(provider.calls, 1);
+    provider.handler = (_) async => throw StateError('must not be called');
+    final page = await p.rankFeatures(
+      features: candidates,
+      source: 'web',
+      accountScope: 'uid:1',
+      token: RecommendationSession().begin(),
+      cacheOnly: true,
+    );
+    expect(provider.calls, 1);
+    expect(page.cacheHits, 2);
+    expect(page.status, AiFeedStatus.cached);
+  });
+
   test('accounts do not share cache or budget', () async {
     final p = pipeline();
     await p.rankFeatures(

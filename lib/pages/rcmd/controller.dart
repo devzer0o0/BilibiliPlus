@@ -36,6 +36,7 @@ class RcmdController extends CommonListController {
   final Map<String, VideoFeatures> _featuresByBvid = {};
   final Set<String> _seenBvids = {};
   final Map<String, BaseRcmdVideoItemModel> _modelsByBvid = {};
+  final List<BaseRcmdVideoItemModel> _allCandidates = [];
 
   bool get aiEnabled {
     try {
@@ -147,6 +148,7 @@ class RcmdController extends CommonListController {
     _featuresByBvid.clear();
     _modelsByBvid.clear();
     _seenBvids.clear();
+    _allCandidates.clear();
 
     // Strict mode needs enough candidates before it can filter; preference
     // mode keeps the existing six-card top-up path and one upstream page here.
@@ -191,6 +193,7 @@ class RcmdController extends CommonListController {
     if (merged.isEmpty) {
       return const Success<List<BaseRcmdVideoItemModel>>([]);
     }
+    _allCandidates.addAll(merged);
 
     final ranked = await _ai.pipeline.rankPage(
       models: merged,
@@ -252,6 +255,7 @@ class RcmdController extends CommonListController {
         fresh.add(item);
         if (bvid != null) _modelsByBvid[bvid] = item;
       }
+      _allCandidates.addAll(fresh);
       page = cursor - 1;
       if (fresh.isEmpty) continue;
       final ranked = await _ai.pipeline.rankPage(
@@ -349,6 +353,42 @@ class RcmdController extends CommonListController {
     SmartDialog.showToast(
       ok ? '已更新本地 AI 偏好，下次刷新生效' : 'AI 推荐筛选未开启',
     );
+  }
+
+  /// Applies already-cached scores to the candidates currently on screen.
+  /// No upstream page is fetched and no new model request is made, so the
+  /// scores that just arrived are not thrown away by a refresh.
+  Future<void> applyLateAiRanking() async {
+    final token = _aiToken;
+    if (token == null || _allCandidates.isEmpty) return;
+    final ranked = await _ai.pipeline.rankPage(
+      models: List<BaseRcmdVideoItemModel>.of(_allCandidates),
+      source: appRcmd ? 'app' : 'web',
+      accountScope: _ai.recommendScope,
+      token: token,
+      isCurrent: () => _aiSession.isCurrent(token),
+      lastShownAtMs: _lastShownAtMs,
+      cacheOnly: true,
+    );
+    if (!_aiSession.isCurrent(token)) return;
+    aiPage.value = ranked;
+    aiNewRankingReady.value = false;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final models = <BaseRcmdVideoItemModel>[];
+    for (final item in ranked.items) {
+      final model = _modelsByBvid[item.features.bvid];
+      if (model == null) continue;
+      models.add(model);
+      _lastShownAtMs[item.features.bvid] = now;
+    }
+    if (loadingState.value case Success(:final response)) {
+      response!
+        ..clear()
+        ..addAll(models);
+      loadingState.refresh();
+    } else {
+      loadingState.value = Success<List<BaseRcmdVideoItemModel>>(models);
+    }
   }
 
   Future<void> aiUndo() async {

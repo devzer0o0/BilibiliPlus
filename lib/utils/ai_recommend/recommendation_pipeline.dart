@@ -162,6 +162,7 @@ class AiRecommendationPipeline {
     bool allowFolding = true,
     Map<String, int> lastShownAtMs = const {},
     void Function()? onLateRankingReady,
+    bool cacheOnly = false,
   }) {
     final features = featuresOf(models, source);
     return rankFeatures(
@@ -173,6 +174,7 @@ class AiRecommendationPipeline {
       allowFolding: allowFolding,
       lastShownAtMs: lastShownAtMs,
       onLateRankingReady: onLateRankingReady,
+      cacheOnly: cacheOnly,
     );
   }
 
@@ -185,6 +187,7 @@ class AiRecommendationPipeline {
     bool allowFolding = true,
     Map<String, int> lastShownAtMs = const {},
     void Function()? onLateRankingReady,
+    bool cacheOnly = false,
   }) async {
     final started = clock();
     final settings = await settingsLoader();
@@ -268,7 +271,7 @@ class AiRecommendationPipeline {
     var waitMs = 0;
     AiProvider? provider;
 
-    if (settings.hasModel) {
+    if (settings.hasModel && !cacheOnly) {
       final today = clock();
       final snapshot = await usage.read(accountScope, today);
       requestsToday = snapshot.requests;

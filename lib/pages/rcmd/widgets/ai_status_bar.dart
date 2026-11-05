@@ -24,7 +24,7 @@ class AiStatusBar extends StatelessWidget {
           lateReady &&
           (status == AiFeedStatus.unavailable ||
               status == AiFeedStatus.localRules);
-      final statusLabel = latePending ? 'AI 评分已就绪 · 下拉刷新' : status.label;
+      final statusLabel = latePending ? 'AI 排序已就绪 · 点应用' : status.label;
       final color = latePending
           ? theme.colorScheme.primary
           : switch (status) {
@@ -68,12 +68,15 @@ class AiStatusBar extends StatelessWidget {
                       ),
                     ),
                   if (controller.aiNewRankingReady.value) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      '新的排序已就绪',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.primary,
+                    const SizedBox(width: 4),
+                    TextButton(
+                      onPressed: controller.applyLateAiRanking,
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        minimumSize: const Size(0, 28),
                       ),
+                      child: const Text('应用'),
                     ),
                   ],
                   const SizedBox(width: 4),
@@ -161,13 +164,22 @@ class AiStatusBar extends StatelessWidget {
                     icon: const Icon(Icons.tune),
                     label: const Text('调整兴趣'),
                   ),
+                  if (controller.aiNewRankingReady.value)
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        controller.applyLateAiRanking();
+                      },
+                      icon: const Icon(Icons.auto_awesome),
+                      label: const Text('应用当前页 AI 排序'),
+                    ),
                   OutlinedButton.icon(
                     onPressed: () {
                       Navigator.pop(context);
                       controller.onRefresh();
                     },
                     icon: const Icon(Icons.refresh),
-                    label: const Text('立即刷新'),
+                    label: const Text('刷新推荐'),
                   ),
                   if (controller.aiFoldedCount > 0)
                     OutlinedButton.icon(
