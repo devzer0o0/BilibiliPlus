@@ -6,6 +6,22 @@ import 'package:PiliPlus/utils/parse_string.dart';
 
 class RcmdVideoItemAppModel extends BaseRcmdVideoItemModel {
   int? get id => aid;
+
+  /// The publish time, in Unix seconds, under any of the keys this feed has
+  /// been seen to use. Returns null when the payload carries none, which the
+  /// age filter treats as "keep" rather than "drop".
+  static int? _pubdateOf(Map<String, dynamic> json) {
+    for (final key in const ['pubdate', 'pub_time', 'pubtime', 'ctime']) {
+      final raw = json[key] ?? json['player_args']?[key];
+      if (raw is int) return raw;
+      if (raw is String) {
+        final parsed = int.tryParse(raw);
+        if (parsed != null) return parsed;
+      }
+    }
+    return null;
+  }
+
   String? talkBack;
 
   String? cardType;
@@ -25,6 +41,11 @@ class RcmdVideoItemAppModel extends BaseRcmdVideoItemModel {
     owner = RcmdOwner.fromJson(json, goto);
     rcmdReason = json['rcmd_reason'];
     if (rcmdReason == '竖屏') rcmdReason = null;
+    // The app feed is not documented and has used several spellings for the
+    // publish time. Without one of them `pubdate` stayed null for every card,
+    // which the age filter reads as "undated" and keeps - i.e. the setting
+    // would have looked enabled and done nothing.
+    pubdate = _pubdateOf(json);
     //     json['bottom_rcmd_reason'] ??
     //     json['top_rcmd_reason'];
     if (rcmdReason != null && rcmdReason!.contains('赞')) {

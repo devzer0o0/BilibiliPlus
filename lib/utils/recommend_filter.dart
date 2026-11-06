@@ -1,4 +1,5 @@
 import 'package:PiliPlus/models/model_video.dart';
+import 'package:PiliPlus/utils/recommend_age_filter.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 
 abstract final class RecommendFilter {
@@ -12,6 +13,41 @@ abstract final class RecommendFilter {
     caseSensitive: false,
   );
   static bool enableFilter = rcmdRegExp.pattern.isNotEmpty;
+
+  /// How far back the feed may reach. `all` means the switch is off, which is
+  /// the behaviour every other filter here already had.
+  ///
+  /// Lazily resolved: this class is first touched from the HTTP layer, which can
+  /// run before Hive is open. A static initialiser would read `Pref` at class
+  /// load and throw. Null means "not read yet", not "no filter".
+  static RecommendAgeFilter? _ageFilter;
+
+  static RecommendAgeFilter get ageFilter =>
+      _ageFilter ??= _readStoredAgeFilter();
+
+  static set ageFilter(RecommendAgeFilter value) => _ageFilter = value;
+
+  /// Reads the stored window, tolerating a store that is not open yet.
+  ///
+  /// This class is reached from the HTTP layer, and `GStorage.setting` is a late
+  /// field that only exists after `GStorage.init()`; reading it earlier throws
+  /// `LateInitializationError`. Returning `all` is the correct fallback: it is
+  /// the behaviour this build had before the option existed, and it filters
+  /// nothing, so a cold path cannot hide content.
+  static RecommendAgeFilter _readStoredAgeFilter() {
+    try {
+      return RecommendAgeFilter.fromStored(Pref.rcmdAgeFilterDays);
+    } catch (_) {
+      return RecommendAgeFilter.all;
+    }
+  }
+
+  /// Injectable clock for the cutoff. Production leaves it null; tests set it so
+  /// the window is deterministic.
+  static DateTime? nowOverride;
+
+  static RecommendAgeWindow get ageWindow =>
+      RecommendAgeWindow.of(ageFilter, now: nowOverride);
 
   // (web/app)rcmd
   /// Re-reads the static mirrors after a restore or settings import.
@@ -57,9 +93,16 @@ abstract final class RecommendFilter {
     return duration > 0 && duration < minDurationForRcmd;
   }
 
+  /// Whether [pubdate] falls outside the selected age window.
+  ///
+  /// Split out from [filterAll] so a caller holding only a raw timestamp (the
+  /// app-recommend path parses maps, not models) can apply the same rule.
+  static bool filterAge(int? pubdate) => !ageWindow.allows(pubdate);
+
   /// related/[filterWithExempt]
   static bool filterAll(BaseVideoItemModel videoItem) {
     return filterDuration(videoItem.duration) ||
+        filterAge(videoItem.pubdate) ||
         filterLikeRatio(videoItem.stat.like, videoItem.stat.view) ||
         filterTitle(videoItem.title);
   }

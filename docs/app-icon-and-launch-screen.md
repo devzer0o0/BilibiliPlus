@@ -193,9 +193,10 @@ AV1 VideoToolbox Avcodec 已注入并重签），`devicectl device install app` 
 
 - **桌面图标与启动画面的真机截图**：设备会自动锁屏，且启动画面消失快于截图延迟；
   解锁状态下主屏图标肉眼可见为金色小电视（本次未留截图）。
-- Android 启动器资源（`android/app/src/main/res`）未重新生成：该目录在当前工作区未被 Git 跟踪，
-  且本次任务以 iOS 为主。`pubspec.yaml` 的生成配置已指向新的 1024 母版与安全区前景，
-  后续运行 `flutter_launcher_icons` 会从新母版生成各平台图标。
+- Android 启动器图标已用 `dart run flutter_launcher_icons` 从新母版重新生成
+  （自适应前景/单色，背景 `#151515`）；Android 启动图（`drawable-*/splash.png`）未能重新生成：
+  当前仓库的 `android/` 是只有 res 骨架的残留目录，没有 `AndroidManifest.xml`，
+  `flutter_native_splash` 无法运行，旧 splash 图暂按原样入库。
 - macOS 没有随仓库提交的 AppIcon 资源；配置同样指向新母版。
 - Android 启动器资源（`android/app/src/main/res`）未重新生成：该目录在当前工作区未被 Git 跟踪，
   且本次任务以 iOS 为主。`pubspec.yaml` 的生成配置已指向新的 1024 母版与安全区前景，

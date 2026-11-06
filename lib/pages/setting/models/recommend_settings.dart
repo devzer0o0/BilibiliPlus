@@ -2,7 +2,10 @@ import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/pages/rcmd/controller.dart';
 import 'package:PiliPlus/pages/setting/ai_recommend.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
+import 'package:PiliPlus/utils/recommend_age_filter.dart';
 import 'package:PiliPlus/utils/recommend_filter.dart';
+import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
+import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter/foundation.dart';
@@ -107,6 +110,52 @@ List<SettingsModel> get recommendSettings => [
     values: [0, 50, 100, 500, 1000],
     onChanged: (value) => RecommendFilter.minPlayForRcmd = value,
     filterScope: '推荐、热门、分区、相关视频',
+  ),
+  // Stored as a day count rather than an index, so adding a rung later does not
+  // silently change what an existing setting means.
+  NormalModel(
+    title: '发布时间过滤',
+    subtitle: '只显示所选时间范围内发布的推荐视频；不限则与之前行为一致',
+    leading: const Icon(Icons.calendar_month_outlined),
+    getSubtitle: () {
+      final current = RecommendFilter.ageFilter;
+      return current.isEnabled
+          ? '当前: ${current.label}（过滤早于该时间的视频）'
+          : '当前: 不限（不过滤发布时间）';
+    },
+    onTap: (context, setState) async {
+      // SelectDialog rather than RadioListTile: the rest of this page uses it,
+      // and RadioListTile's groupValue/onChanged are deprecated in this Flutter.
+      final result = await showDialog<RecommendAgeFilter>(
+        context: context,
+        builder: (context) => SelectDialog<RecommendAgeFilter>(
+          title: '发布时间过滤',
+          value: RecommendFilter.ageFilter,
+          values: [
+            for (final filter in RecommendAgeFilter.values)
+              (filter, filter.label),
+          ],
+        ),
+      );
+      if (result == null) return;
+      RecommendFilter.ageFilter = result;
+      await GStorage.setting.put(
+        SettingBoxKey.rcmdAgeFilterDays,
+        result.storedValue,
+      );
+      setState();
+      // The feed is fetched, not observed: without this the new window only
+      // takes effect on the next manual refresh, which reads as "the setting
+      // did nothing".
+      try {
+        final controller = Get.find<RcmdController>();
+        controller.page = 0;
+        controller.isEnd = false;
+        await controller.onRefresh();
+      } catch (e) {
+        if (kDebugMode) debugPrint('$e');
+      }
+    },
   ),
   SwitchModel(
     title: '已关注UP豁免推荐过滤',

@@ -77,6 +77,12 @@ void main() {
   uv = clamp(uv, vec2(0.0), vec2(1.0));
 
   vec4 sampled = texture(u_texture, uv);
+  // The backdrop snapshot is premultiplied: near the capsule edge a blur can
+  // leave alpha < 1, and taking .rgb as-is would darken the rim into a grey
+  // ring. Restore the un-premultiplied colour; the material stays opaque.
+  vec3 sampledRgb = sampled.a > 0.0
+      ? sampled.rgb / sampled.a
+      : sampled.rgb;
 
   if (u_debug > 0.5 && d > 0.0) {
     fragColor = vec4(1.0, 0.0, 0.0, 1.0);
@@ -85,5 +91,5 @@ void main() {
 
   // The filtered backdrop replaces the backdrop, so this has to stay opaque:
   // the tint and the highlight are painted by the widget above it.
-  fragColor = vec4(sampled.rgb, 1.0);
+  fragColor = vec4(clamp(sampledRgb, 0.0, 1.0), 1.0);
 }

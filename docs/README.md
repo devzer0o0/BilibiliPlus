@@ -13,6 +13,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [无线连接 iPhone](device-connection-wireless.md) | 本项目默认调试通道：Device Hub 一次性配对、无线判据、换网络后的排查顺序 |
 | [iOS 原生播放架构](ios-native-playback-architecture.md) | mpv 与 AVPlayer 双后端、单一播放时钟与身份分离 |
 | [自定义功能范围](custom-features-scope.md) | PiP、听视频、截图、超分入口、后台与生命周期 |
 | [分支验证方法](verifying-this-branch.md) | 如何在本地复现验证 |

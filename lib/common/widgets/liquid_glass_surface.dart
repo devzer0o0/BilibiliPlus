@@ -195,7 +195,7 @@ class _LiquidGlassSurfaceState extends State<LiquidGlassSurface> {
           filter: ui.ImageFilter.blur(
             sigmaX: widget.blurSigma,
             sigmaY: widget.blurSigma,
-            tileMode: TileMode.decal,
+            tileMode: TileMode.clamp,
           ),
           child: const SizedBox.expand(),
         );
@@ -330,7 +330,10 @@ class _RenderShaderBackdropFilter extends RenderProxyBox {
             inner: ui.ImageFilter.blur(
               sigmaX: blurSigma,
               sigmaY: blurSigma,
-              tileMode: TileMode.decal,
+              // decal fades the snapshot to transparent at its own edge, which
+              // showed up as a dark ring along the capsule; clamp keeps the
+              // edge pixels and the rim reads as a clean hairline.
+              tileMode: TileMode.clamp,
             ),
           )
         : shaderFilter;
@@ -381,23 +384,25 @@ class _GlassPaint extends CustomPainter {
     // what the recording shows on both the top and bottom edges.
     final rim = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
+      ..strokeWidth = 0.8
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          Colors.white.withValues(alpha: isDark ? 0.15 : 0.6),
-          Colors.white.withValues(alpha: isDark ? 0.11 : 0.5),
+          Colors.white.withValues(alpha: isDark ? 0.16 : 0.34),
+          Colors.white.withValues(alpha: isDark ? 0.10 : 0.20),
         ],
       ).createShader(rect);
-    canvas.drawRRect(rrect.deflate(0.5), rim);
+    canvas.drawRRect(rrect.deflate(0.4), rim);
 
+    // A single soft inner sheen instead of a wide outer halo: the recording has
+    // one hairline, and a 2.5 pt glow read as a grey border on light content.
     final glow = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.2)
-      ..color = Colors.white.withValues(alpha: isDark ? 0.03 : 0.12);
-    canvas.drawRRect(rrect.deflate(0.6), glow);
+      ..strokeWidth = 1.2
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 0.7)
+      ..color = Colors.white.withValues(alpha: isDark ? 0.02 : 0.05);
+    canvas.drawRRect(rrect.deflate(0.5), glow);
   }
 
   @override

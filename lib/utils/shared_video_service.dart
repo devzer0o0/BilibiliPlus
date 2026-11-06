@@ -35,7 +35,10 @@ abstract final class SharedVideoService {
   static Future<List<SharedVideo>> load() async {
     final sessions = await ImGrpc.sessionMain();
     if (sessions is! Success<SessionMainReply>) {
-      PlaybackDiagnostics.record('share', 'sessionMain failed: ${sessions.runtimeType}');
+      PlaybackDiagnostics.record(
+        'share',
+        'sessionMain failed: ${sessions.runtimeType}',
+      );
       return const [];
     }
     final all = sessions.response.sessions;
@@ -53,15 +56,16 @@ abstract final class SharedVideoService {
     // is present, there is no reason to walk anyone else's messages at all.
     // Scanning the newest N blindly meant the section went empty as soon as that
     // thread stopped being among the most recently active ones.
-    final oneToOne = sessions.response.sessions
-        .where((s) => s.id.hasPrivateId() && s.id.privateId.hasTalkerUid())
-        .toList()
-      ..sort((a, b) {
-        final aWanted = a.id.privateId.talkerUid.toInt() == stepGoUid;
-        final bWanted = b.id.privateId.talkerUid.toInt() == stepGoUid;
-        if (aWanted == bWanted) return 0;
-        return aWanted ? -1 : 1;
-      });
+    final oneToOne =
+        sessions.response.sessions
+            .where((s) => s.id.hasPrivateId() && s.id.privateId.hasTalkerUid())
+            .toList()
+          ..sort((a, b) {
+            final aWanted = a.id.privateId.talkerUid.toInt() == stepGoUid;
+            final bWanted = b.id.privateId.talkerUid.toInt() == stepGoUid;
+            if (aWanted == bWanted) return 0;
+            return aWanted ? -1 : 1;
+          });
 
     var visited = 0;
     for (final session in oneToOne) {
@@ -99,7 +103,9 @@ abstract final class SharedVideoService {
   /// for certain: the surrounding prose is not the video's title and there is
   /// no cover at all. Looking each video up fixes both, and failures fall back
   /// to what the message said rather than dropping the entry.
-  static Future<List<SharedVideo>> _fillDetails(List<SharedVideo> shares) async {
+  static Future<List<SharedVideo>> _fillDetails(
+    List<SharedVideo> shares,
+  ) async {
     if (shares.isEmpty) return shares;
     final out = <SharedVideo>[];
     for (final share in shares) {
@@ -111,24 +117,12 @@ abstract final class SharedVideoService {
   static Future<SharedVideo> _detail(SharedVideo share) async {
     try {
       final res = await VideoHttp.videoIntro(bvid: share.bvid);
-      if (res is! Success<VideoDetailData>) {
-        PlaybackDiagnostics.record(
-          'share-detail',
-          'bvid=${share.bvid} lookup failed ${res.runtimeType}',
-        );
-        return share;
-      }
+      if (res is! Success<VideoDetailData>) return share;
       final title = res.response.title;
       final pic = res.response.pic;
       final filled = share.copyWith(
         title: (title != null && title.trim().isNotEmpty) ? title.trim() : null,
         cover: (pic != null && pic.isNotEmpty) ? pic : null,
-      );
-      PlaybackDiagnostics.record(
-        'share-detail',
-        'bvid=${share.bvid} title=${filled.title} '
-            'coverLen=${filled.cover.length} '
-            'coverHost=${Uri.tryParse(filled.cover)?.host}',
       );
       return filled;
     } catch (_) {
@@ -166,22 +160,6 @@ abstract final class SharedVideoService {
       );
       return const [];
     }
-    PlaybackDiagnostics.record(
-      'share-session',
-      'talker=$talkerId msgs=${res.response.messages.length}',
-    );
-    // Shape of what the thread actually carries: msgType, whether the content
-    // parses as JSON, and whether it carries an id/title. Without this the only
-    // visible symptom is "zero cards", which does not say which rule rejected
-    // them.
-    for (final m in res.response.messages.take(6)) {
-      PlaybackDiagnostics.record(
-        'share-msg',
-        'type=${m.msgType} uid=${m.senderUid.toInt()} '
-            'hasBvid=${RegExp(r'BV[0-9A-Za-z]{10}').hasMatch(m.content)}',
-      );
-    }
-
     final messages = res.response.messages.take(messagesPerSession);
     final sessionName = _displayName(session);
     return SharedVideoParser.parsePage(
@@ -216,7 +194,8 @@ abstract final class SharedVideoService {
   }
 
   /// The sender filter followed by the per-bvid fold, newest first.
-  static List<SharedVideo> dedupe(Iterable<Msg> messages, {
+  static List<SharedVideo> dedupe(
+    Iterable<Msg> messages, {
     required String senderName,
     required int senderId,
   }) {
