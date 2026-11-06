@@ -8,7 +8,7 @@ Inputs (never written by this script):
 
 Outputs:
   ios/Runner/Assets.xcassets/AppIcon.appiconset/*.png  (every Contents.json entry)
-  ios/Runner/Assets.xcassets/LaunchImage.imageset/*.png (1x/2x/3x, light+dark)
+  ios/Runner/Assets.xcassets/LaunchImageGoldTV.imageset/*.png (1x/2x/3x, light+dark)
   assets/images/logo/app_icon_ios_1024.png
   assets/images/logo/app_icon_foreground.png (transparent, Android safe zone)
   assets/images/logo/app_icon_monochrome.png (white alpha mask)
@@ -36,7 +36,7 @@ ICON = DESIGN / "icon-1024.png"
 CUTOUT = DESIGN / "tv-transparent-1024.png"
 
 APPICON = ROOT / "ios/Runner/Assets.xcassets/AppIcon.appiconset"
-LAUNCH = ROOT / "ios/Runner/Assets.xcassets/LaunchImage.imageset"
+LAUNCH = ROOT / "ios/Runner/Assets.xcassets/LaunchImageGoldTV.imageset"
 LOGO = ROOT / "assets/images/logo"
 
 

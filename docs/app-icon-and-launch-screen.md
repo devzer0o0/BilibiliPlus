@@ -96,7 +96,7 @@ python3 -m venv /tmp/piliplus-icon-venv
 | 路径 | 用途 | 规格 |
 | --- | --- | --- |
 | `ios/Runner/Assets.xcassets/AppIcon.appiconset/*.png` | iOS 桌面图标 | 25 条引用 / 21 个文件，20–1024，PNG sRGB、无 alpha |
-| `ios/Runner/Assets.xcassets/LaunchImage.imageset/*.png` | iOS 启动图 | 128/256/384（light+dark），RGBA 透明 |
+| `ios/Runner/Assets.xcassets/LaunchImageGoldTV.imageset/*.png` | iOS 启动图 | 128/256/384（light+dark），RGBA 透明 |
 | `assets/images/logo/app_icon_ios_1024.png` | iOS/桌面图标源 | 1024 不透明 |
 | `assets/images/logo/app_icon_foreground.png` | Android 自适应前景 | 512 透明，内容收在 66% 安全区 |
 | `assets/images/logo/app_icon_monochrome.png` | Android 单色图标 | 512 白色 alpha 蒙版 |
@@ -119,6 +119,18 @@ iOS 的 launch storyboard 不能删除，只能替换（`UILaunchStoryboardName`
 - 图形从旧版"圆角方形图标"改为**同一设计来源的透明金色小电视**，不再有圆角方形底板；
 - 浅色/深色两套使用同一张透明素材（启动图本身不铺底色，底色由 storyboard/系统提供）。
 
+### 启动快照缓存
+
+iOS 会把 launch storyboard 的渲染结果缓存到 `SplashBoard`。**只替换 `LaunchImage` 图片、不改变 storyboard
+时，系统可能继续显示旧快照**：在已安装 `0.0.3+3` 的设备上，真机仍显示 2.2.0+1 时代的 DeepSeek 蓝图标，
+而当前 AppIcon 已经是金色小电视。因此本次：
+
+- 启动图资源从 `LaunchImage` 重命名为 **`LaunchImageGoldTV`**，storyboard 同步更新（启动画面身份改变）；
+- build 号从 `+3` 提到 **`0.0.3+4`**，方便区分设备上的新旧构建。
+
+覆盖安装 build 4 后会重新生成启动快照。若个别设备仍显示旧图，删除 App 再重装可清空该缓存
+（只影响启动快照，不影响业务数据以外的 App 数据——删除重装会清空本地数据，请自行权衡）。
+
 ![模拟器截图：主屏图标（iPhone 17e 模拟器）。系统施加圆角遮罩，天线未被裁切。](images/app-icon-simulator-home.png)
 
 ![模拟器截图：冷启动画面。黑色背景与透明金色小电视。](images/app-icon-simulator-launch.png)
@@ -137,7 +149,7 @@ iOS 的 launch storyboard 不能删除，只能替换（`UILaunchStoryboardName`
 | 资源链路可重复 | 两次完整运行母版渲染与资源生成，母版/图标/启动图/ico 的 SHA-256 逐字节一致 |
 | 资产目录编译 | `actool` 编译 `Assets.xcassets` 通过，产出 `AppIcon60x60@2x` 等 |
 | 编译产物 | `flutter build ios --debug --no-codesign` 成功；`Runner.app` 内 120×120 图标为 RGB、无 alpha、sRGB |
-| 模拟器 | iPhone 17e 模拟器安装后桌面图标与冷启动画面正确（见上）；真机未验证 |
+| 模拟器 | iPhone 17e 模拟器安装 0.0.3+4 后桌面图标与冷启动画面正确（见上）；真机未由本会话安装 |
 
 ![180/120/60/40 像素的实际大小（上）与 4× 放大（下）。](images/app-icon-sizes.png)
 
@@ -160,7 +172,8 @@ Bundle ID 仍为 `com.example.pilipalax`。本次只改图标资源，不改应�
 
 ## 未验证项
 
-- **物理设备**未安装、未截取桌面图标与冷启动画面；模拟器截图不能替代真机验收。
+- **物理设备**未由本会话安装、未截取桌面图标与冷启动画面；模拟器截图不能替代真机验收。
+  设备上残留的 DeepSeek 蓝启动图是旧的 `SplashBoard` 快照（见“启动快照缓存”），安装 build 4 或删除重装后消失。
 - Android 启动器资源（`android/app/src/main/res`）未重新生成：该目录在当前工作区未被 Git 跟踪，
   且本次任务以 iOS 为主。`pubspec.yaml` 的生成配置已指向新的 1024 母版与安全区前景，
   后续运行 `flutter_launcher_icons` 会从新母版生成各平台图标。
