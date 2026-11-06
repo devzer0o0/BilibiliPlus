@@ -59,6 +59,7 @@ class MainController extends GetxController
 
   final enableMYBar = Pref.enableMYBar;
   final floatingNavBar = Pref.floatingNavBar;
+  final liquidGlassNavBar = Pref.liquidGlassNavBar;
   final useSideBar = Pref.useSideBar;
   final hideSideBarLabel = Pref.hideSideBarLabel;
   final mainTabBarView = Pref.mainTabBarView;
@@ -86,8 +87,14 @@ class MainController extends GetxController
           )
         : PageController(initialPage: selectedIndex.value);
 
+    // The reference bar never scrolls away. Keep that as the default only
+    // while the user has never saved the switch: an explicit choice, in either
+    // direction, still wins over the glass default.
+    final hideBarPref = Pref.hideBottomBarExplicitlySet || !liquidGlassNavBar
+        ? Pref.hideBottomBar
+        : false;
     hideBottomBar =
-        !useSideBar && navigationBars.length > 1 && Pref.hideBottomBar;
+        !useSideBar && navigationBars.length > 1 && hideBarPref;
     if (hideBottomBar) {
       switch (barHideType) {
         case .instant:

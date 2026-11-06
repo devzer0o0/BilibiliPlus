@@ -88,6 +88,7 @@ abstract final class BackupRegistry {
         SettingBoxKey.hideTopBar,
         SettingBoxKey.hideBottomBar,
         SettingBoxKey.barHideType,
+        SettingBoxKey.liquidGlassNavBar,
         SettingBoxKey.tabBarSort,
         SettingBoxKey.navBarSort,
         SettingBoxKey.mainTabBarView,

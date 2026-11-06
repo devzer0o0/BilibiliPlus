@@ -277,6 +277,13 @@ flutter:
     - path: assets/images/paycoins/
     - path: assets/shaders/
 
+  # Compiled by the Flutter shader compiler for FragmentProgram.fromAsset.
+  # Kept outside assets/shaders/: that directory is a plain asset folder for the
+  # mpv GLSL sources, and the tool refuses to bundle a listed shader from
+  # inside an asset directory.
+  shaders:
+    - path: assets/liquid_glass/liquid_nav.frag
+
   fonts:
     - family: digital_id_num
       fonts:

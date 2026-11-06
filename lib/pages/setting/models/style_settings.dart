@@ -132,8 +132,18 @@ List<SettingsModel> get styleSettings => [
     defaultVal: true,
     needReboot: true,
   ),
+  SwitchModel(
+    title: '液态玻璃底栏',
+    subtitle: '脚本参考样式；开启后优先于“悬浮底栏”和“MD3样式底栏”',
+    leading: const Icon(Icons.blur_on),
+    setKey: SettingBoxKey.liquidGlassNavBar,
+    // Same default the preference itself reads, so the switch does not lie.
+    defaultVal: PlatformUtils.isMobile,
+    needReboot: true,
+  ),
   const SwitchModel(
     title: '悬浮底栏',
+    subtitle: '仅在关闭“液态玻璃底栏”后生效',
     leading: Icon(MdiIcons.soundbar),
     setKey: SettingBoxKey.floatingNavBar,
     defaultVal: false,

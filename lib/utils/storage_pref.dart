@@ -1127,6 +1127,20 @@ abstract final class Pref {
   static bool get floatingNavBar =>
       _setting.get(SettingBoxKey.floatingNavBar, defaultValue: false);
 
+  /// Liquid-glass bottom bar: the reference style on mobile. It takes
+  /// precedence over [floatingNavBar] and [enableMYBar] when it is on.
+  static bool get liquidGlassNavBar => _setting.get(
+    SettingBoxKey.liquidGlassNavBar,
+    defaultValue: PlatformUtils.isMobile,
+  );
+
+  /// Whether the user ever saved the hide-bottom-bar switch.
+  ///
+  /// [hideBottomBar] defaults to on for mobile, but the glass bar follows the
+  /// reference and stays visible until someone opts in explicitly.
+  static bool get hideBottomBarExplicitlySet =>
+      _setting.containsKey(SettingBoxKey.hideBottomBar);
+
   static bool get removeSafeArea =>
       _setting.get(SettingBoxKey.removeSafeArea, defaultValue: false);
 
