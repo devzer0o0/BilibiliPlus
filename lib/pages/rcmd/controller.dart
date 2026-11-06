@@ -23,6 +23,7 @@ import 'package:PiliPlus/utils/shared_video_read_store.dart';
 import 'package:PiliPlus/utils/shared_video_service.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 
@@ -128,29 +129,55 @@ class RcmdController extends CommonListController {
     }
   }
 
-  /// Paints the previous session's AI page before the first network request.
+  /// Paints the previous session's AI page before any network request.
   ///
   /// Hive is already open when this controller is created, so the restore is
-  /// synchronous and the first frame has cards. The normal refresh then
-  /// replaces the page; if that refresh fails, [handleError] keeps the cached
-  /// cards on screen instead of falling back to a skeleton.
-  void _restoreFeedSnapshot() {
-    if (!aiEnabled) return;
-    final store = _snapshotStore;
-    if (store == null) return;
-    final snapshot = store.read();
-    if (snapshot == null) return;
+  /// synchronous and the first frame has cards. Returns true when a usable
+  /// page was painted: the caller then skips the start-up refresh, because
+  /// the feed on screen is already the page the user saw last time. A pull to
+  /// refresh still replaces it, and [handleError] keeps the cached cards if
+  /// such a refresh fails instead of falling back to a skeleton.
+  bool _restoreFeedSnapshot() {
     final source = appRcmd ? 'app' : 'web';
+    final accountHash = aiFeedFingerprint(_ai.recommendScope);
+    final settingsHash = aiFeedFingerprint(_ai.settings.toJson());
+    debugPrint(
+      '[feed-restore] start aiEnabled=$aiEnabled appRcmd=$appRcmd '
+      'scope=${_ai.recommendScope} account=${accountHash.substring(0, 8)} '
+      'settings=${settingsHash.substring(0, 8)}',
+    );
+    if (!aiEnabled) return false;
+    final store = _snapshotStore;
+    if (store == null) {
+      debugPrint('[feed-restore] no store');
+      return false;
+    }
+    final snapshot = store.read();
+    if (snapshot == null) {
+      debugPrint('[feed-restore] no snapshot');
+      return false;
+    }
+    debugPrint(
+      '[feed-restore] stored age=${DateTime.now().difference(snapshot.savedAt)} '
+      'account=${snapshot.accountHash.substring(0, 8)} '
+      'settings=${snapshot.settingsHash.substring(0, 8)} '
+      'source=${snapshot.source} status=${snapshot.status} '
+      'items=${snapshot.items.length}',
+    );
     if (!snapshot.isUsable(
       now: DateTime.now(),
-      accountHash: aiFeedFingerprint(_ai.recommendScope),
-      settingsHash: aiFeedFingerprint(_ai.settings.toJson()),
+      accountHash: accountHash,
+      settingsHash: settingsHash,
       source: source,
     )) {
-      return;
+      debugPrint('[feed-restore] NOT usable');
+      return false;
     }
     final visibleCards = snapshot.decodeCards(snapshot.items);
-    if (visibleCards.isEmpty) return;
+    if (visibleCards.isEmpty) {
+      debugPrint('[feed-restore] no decodable cards');
+      return false;
+    }
     final foldedCards = snapshot.decodeCards(snapshot.folded);
     final cardsByBvid = <String, BaseRcmdVideoItemModel>{
       for (final card in visibleCards) card.bvid!: card,
@@ -182,7 +209,7 @@ class RcmdController extends CommonListController {
       _lastShownAtMs[bvid] = now;
       _rememberSnapshotScore(scores, entry);
     }
-    if (items.isEmpty) return;
+    if (items.isEmpty) return false;
 
     final folded = <RankedRecommendation>[];
     for (final entry in snapshot.folded) {
@@ -211,7 +238,7 @@ class RcmdController extends CommonListController {
       items: items,
       folded: folded,
       status: AiFeedStatus.cached,
-      statusDetail: '已恢复上次的 AI 推荐，正在后台更新',
+      statusDetail: '已恢复上次的 AI 推荐 · 下拉刷新',
       originalCount: snapshot.originalCount,
       keptCount: snapshot.keptCount,
       strictDropped: snapshot.strictDropped,
@@ -225,6 +252,8 @@ class RcmdController extends CommonListController {
     _feedRestored = true;
     _aiPaintedLength = display.length;
     loadingState.value = Success<List<BaseRcmdVideoItemModel>>(display);
+    debugPrint('[feed-restore] restored ${display.length} cards');
+    return true;
   }
 
   void _rememberSnapshotScore(
@@ -249,8 +278,18 @@ class RcmdController extends CommonListController {
   void onInit() {
     super.onInit();
     page = 0;
-    _restoreFeedSnapshot();
-    unawaited(queryData());
+    // Cached cards are the whole point of the snapshot: when there is a usable
+    // page, launching costs no recommendation request at all. A refresh runs
+    // only when nothing could be restored, or when the user pulls to refresh.
+    final restored = _restoreFeedSnapshot();
+    debugPrint('[feed-restore] onInit restored=$restored');
+    if (restored) {
+      // Keep the AI session alive without a request so scrolling continues
+      // through the pipeline instead of appending unscored upstream cards.
+      _aiToken = _aiSession.begin();
+    } else {
+      unawaited(queryData());
+    }
     loadSharedVideos();
   }
 
