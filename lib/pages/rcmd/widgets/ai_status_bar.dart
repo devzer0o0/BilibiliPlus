@@ -19,14 +19,29 @@ class AiStatusBar extends StatelessWidget {
       final theme = Theme.of(context);
       final mode = controller.aiSettings.mode;
       final status = page?.status ?? AiFeedStatus.localRules;
+      final blocked = controller.aiBlockedReason.value;
       final lateReady = controller.aiNewRankingReady.value;
       final latePending =
           lateReady &&
           (status == AiFeedStatus.unavailable ||
               status == AiFeedStatus.localRules);
-      final statusLabel = latePending ? 'AI 排序已就绪 · 点应用' : status.label;
+      // When the background pass never scored anything, the reason is the only
+      // thing worth showing: "local rules" alone reads like the feature is off.
+      final blockedShown =
+          !latePending &&
+          blocked.isNotEmpty &&
+          (status == AiFeedStatus.unavailable ||
+              status == AiFeedStatus.localRules ||
+              status == AiFeedStatus.budgetExhausted);
+      final statusLabel = latePending
+          ? 'AI 排序已就绪 · 点应用'
+          : blockedShown
+          ? blocked
+          : status.label;
       final color = latePending
           ? theme.colorScheme.primary
+          : blockedShown
+          ? theme.colorScheme.error
           : switch (status) {
               AiFeedStatus.active => theme.colorScheme.primary,
               AiFeedStatus.cached => theme.colorScheme.tertiary,
@@ -121,6 +136,15 @@ class AiStatusBar extends StatelessWidget {
                   color: theme.colorScheme.outline,
                 ),
               ),
+              if (controller.aiBlockedReason.value.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '后台评分未执行：' + controller.aiBlockedReason.value,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ],
               if (page != null) ...[
                 const SizedBox(height: 10),
                 Text(

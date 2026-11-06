@@ -3,18 +3,25 @@ import 'dart:async';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/ai_recommend/ai_card_actions.dart';
+import 'package:PiliPlus/models/ai_recommend/ai_feed_snapshot.dart';
 import 'package:PiliPlus/models/ai_recommend/ai_recommend_settings.dart';
+import 'package:PiliPlus/models/ai_recommend/ai_score.dart';
 import 'package:PiliPlus/models/ai_recommend/interest_profile.dart';
 import 'package:PiliPlus/models/ai_recommend/video_features.dart';
 import 'package:PiliPlus/models/common/msg/shared_video.dart';
 import 'package:PiliPlus/models/model_rec_video_item.dart';
 import 'package:PiliPlus/pages/common/common_list_controller.dart';
 import 'package:PiliPlus/pages/setting/ai_recommend.dart';
+import 'package:PiliPlus/utils/ai_recommend/ai_feed_snapshot_store.dart';
 import 'package:PiliPlus/utils/ai_recommend/ai_recommendation_service.dart';
 import 'package:PiliPlus/utils/ai_recommend/recommendation_pipeline.dart';
+import 'package:PiliPlus/utils/ai_recommend/recommendation_ranker.dart';
+import 'package:PiliPlus/utils/cache_manager.dart';
 import 'package:PiliPlus/utils/home_feed_policy.dart';
+import 'package:PiliPlus/utils/image_utils.dart';
 import 'package:PiliPlus/utils/shared_video_read_store.dart';
 import 'package:PiliPlus/utils/shared_video_service.dart';
+import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -50,6 +57,12 @@ class RcmdController extends CommonListController {
   final RxBool aiNewRankingReady = false.obs;
   final RxInt aiRestoredFolded = 0.obs;
 
+  /// Why the background AI pass could not improve the page (daily budget used
+  /// up, missing key, model error). Empty when there is nothing to report.
+  /// Without it the bar keeps saying "local rules" and the user cannot tell a
+  /// slow hand-off from a request that never left the device.
+  final RxString aiBlockedReason = ''.obs;
+
   RecommendationToken? _aiToken;
   int _aiTopUpUsed = 0;
   final Map<String, int> _lastShownAtMs = {};
@@ -59,7 +72,15 @@ class RcmdController extends CommonListController {
   final List<BaseRcmdVideoItemModel> _allCandidates = [];
   _PreparedAiPage? _preparedAi;
   bool _preparingAi = false;
+  bool _prefetchQueued = false;
+  // How many cards the last paint put on screen. A background re-rank may
+  // replace the list in place only while this still matches, so a feed the
+  // user has already scrolled or refreshed is never reshuffled under them.
+  int _aiPaintedLength = 0;
   int _prefetchEpoch = 0;
+  AiFeedSnapshotStore? _feedSnapshotStore;
+  bool _feedRestored = false;
+  final Set<String> _warmedCoverUrls = {};
 
   bool get aiEnabled {
     try {
@@ -97,11 +118,139 @@ class RcmdController extends CommonListController {
   /// Shown above the grid and deliberately not part of AI candidate selection.
   final RxList<SharedVideo> sharedVideos = <SharedVideo>[].obs;
 
+  AiFeedSnapshotStore? get _snapshotStore {
+    final existing = _feedSnapshotStore;
+    if (existing != null) return existing;
+    try {
+      return _feedSnapshotStore = AiFeedSnapshotStore(GStorage.localCache);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Paints the previous session's AI page before the first network request.
+  ///
+  /// Hive is already open when this controller is created, so the restore is
+  /// synchronous and the first frame has cards. The normal refresh then
+  /// replaces the page; if that refresh fails, [handleError] keeps the cached
+  /// cards on screen instead of falling back to a skeleton.
+  void _restoreFeedSnapshot() {
+    if (!aiEnabled) return;
+    final store = _snapshotStore;
+    if (store == null) return;
+    final snapshot = store.read();
+    if (snapshot == null) return;
+    final source = appRcmd ? 'app' : 'web';
+    if (!snapshot.isUsable(
+      now: DateTime.now(),
+      accountHash: aiFeedFingerprint(_ai.recommendScope),
+      settingsHash: aiFeedFingerprint(_ai.settings.toJson()),
+      source: source,
+    )) {
+      return;
+    }
+    final visibleCards = snapshot.decodeCards(snapshot.items);
+    if (visibleCards.isEmpty) return;
+    final foldedCards = snapshot.decodeCards(snapshot.folded);
+    final cardsByBvid = <String, BaseRcmdVideoItemModel>{
+      for (final card in visibleCards) card.bvid!: card,
+      for (final card in foldedCards) card.bvid!: card,
+    };
+
+    final items = <RankedRecommendation>[];
+    final display = <BaseRcmdVideoItemModel>[];
+    final scores = <String, AiCandidateScore>{};
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final entry in snapshot.items) {
+      final bvid = entry.bvid;
+      final card = bvid == null ? null : cardsByBvid[bvid];
+      if (bvid == null || card == null || !_seenBvids.add(bvid)) continue;
+      final item = RankedRecommendation(
+        features: VideoFeatures.fromRecommendation(
+          card,
+          index: items.length,
+          source: source,
+        ),
+        score: entry.relevance,
+        reason: entry.reason,
+        explored: entry.explored,
+      );
+      items.add(item);
+      display.add(card);
+      _modelsByBvid[bvid] = card;
+      _featuresByBvid[bvid] = item.features;
+      _lastShownAtMs[bvid] = now;
+      _rememberSnapshotScore(scores, entry);
+    }
+    if (items.isEmpty) return;
+
+    final folded = <RankedRecommendation>[];
+    for (final entry in snapshot.folded) {
+      final bvid = entry.bvid;
+      final card = bvid == null ? null : cardsByBvid[bvid];
+      if (bvid == null || card == null || !_seenBvids.add(bvid)) continue;
+      final item = RankedRecommendation(
+        features: VideoFeatures.fromRecommendation(
+          card,
+          index: items.length + folded.length,
+          source: source,
+        ),
+        score: entry.relevance,
+        reason: entry.reason,
+        folded: true,
+        explored: entry.explored,
+      );
+      folded.add(item);
+      _modelsByBvid[bvid] = card;
+      _featuresByBvid[bvid] = item.features;
+      _lastShownAtMs[bvid] = now;
+      _rememberSnapshotScore(scores, entry);
+    }
+
+    aiPage.value = AiRankedPage(
+      items: items,
+      folded: folded,
+      status: AiFeedStatus.cached,
+      statusDetail: '已恢复上次的 AI 推荐，正在后台更新',
+      originalCount: snapshot.originalCount,
+      keptCount: snapshot.keptCount,
+      strictDropped: snapshot.strictDropped,
+      exploreCount: snapshot.exploreCount,
+      freshScores: 0,
+      cacheHits: snapshot.cacheHits,
+      requestsToday: snapshot.requestsToday,
+      waitMs: 0,
+      scores: scores,
+    );
+    _feedRestored = true;
+    _aiPaintedLength = display.length;
+    loadingState.value = Success<List<BaseRcmdVideoItemModel>>(display);
+  }
+
+  void _rememberSnapshotScore(
+    Map<String, AiCandidateScore> scores,
+    AiFeedSnapshotItem entry,
+  ) {
+    final bvid = entry.bvid;
+    if (bvid == null) return;
+    if (entry.relevance <= 0 && entry.confidence <= 0 && entry.topics.isEmpty) {
+      return;
+    }
+    scores[bvid] = AiCandidateScore(
+      candidateId: 'snapshot:$bvid',
+      bvid: bvid,
+      relevance: entry.relevance,
+      confidence: entry.confidence,
+      topics: entry.topics,
+    );
+  }
+
   @override
   void onInit() {
     super.onInit();
     page = 0;
-    queryData();
+    _restoreFeedSnapshot();
+    unawaited(queryData());
     loadSharedVideos();
   }
 
@@ -167,9 +316,17 @@ class RcmdController extends CommonListController {
     _aiTopUpUsed = 0;
     aiRestoredFolded.value = 0;
     aiNewRankingReady.value = false;
-    aiPage.value = null;
-    _featuresByBvid.clear();
-    _modelsByBvid.clear();
+    aiBlockedReason.value = '';
+    // A restored page stays on screen until this refresh produces a new one,
+    // so a failed start-up refresh does not flash "local rules" over cards
+    // that are still visible. The maps are only kept for that single
+    // hand-over; the next refresh clears them normally.
+    final keepRestored = _feedRestored;
+    if (!keepRestored) {
+      aiPage.value = null;
+      _featuresByBvid.clear();
+      _modelsByBvid.clear();
+    }
     _seenBvids.clear();
     _allCandidates.clear();
 
@@ -211,7 +368,10 @@ class RcmdController extends CommonListController {
         display.add(model);
         _lastShownAtMs[item.features.bvid] = now;
       }
+      _aiPaintedLength = display.length;
+      _feedRestored = false;
       _scheduleAiPrefetch();
+      unawaited(_persistFeedSnapshot(display, prepared.page));
       return Success<List<BaseRcmdVideoItemModel>>(display);
     }
 
@@ -256,6 +416,7 @@ class RcmdController extends CommonListController {
       _aiTopUpUsed = reachedEnd ? HomeFeedPolicy.maxTopUpPages : fetched;
     }
     if (merged.isEmpty) {
+      _feedRestored = false;
       return const Success<List<BaseRcmdVideoItemModel>>([]);
     }
     _allCandidates.addAll(merged);
@@ -287,15 +448,83 @@ class RcmdController extends CommonListController {
       models.add(model);
       _lastShownAtMs[item.features.bvid] = now;
     }
+    _aiPaintedLength = models.length;
+    _feedRestored = false;
     _scheduleAiPrefetch();
+    unawaited(_persistFeedSnapshot(models, ranked));
     return Success<List<BaseRcmdVideoItemModel>>(models);
   }
 
-  /// Fetches and scores the next page in the background. The result is held
-  /// in memory until the next refresh consumes it. A refresh never waits for
-  /// this work and never starts a model request itself.
+  Future<void> _persistFeedSnapshot(
+    List<BaseRcmdVideoItemModel> shown,
+    AiRankedPage page,
+  ) async {
+    final store = _snapshotStore;
+    if (store == null || !aiEnabled || shown.isEmpty) return;
+    try {
+      final snapshot = captureFeedSnapshot(
+        visible: shown,
+        page: page,
+        modelsByBvid: _modelsByBvid,
+        source: appRcmd ? 'app' : 'web',
+        accountHash: aiFeedFingerprint(_ai.recommendScope),
+        settingsHash: aiFeedFingerprint(_ai.settings.toJson()),
+        savedAt: DateTime.now(),
+      );
+      if (snapshot == null) return;
+      await store.write(snapshot);
+      _warmFeedCovers(shown);
+    } catch (_) {
+      // The snapshot is derived cache. Failing to write it must not fail the
+      // refresh that the user is waiting for.
+    }
+  }
+
+  /// Puts the next covers on disk before the next cold start asks for them.
+  /// NetworkImgLayer looks the same URL up in the same cache manager, so a
+  /// restored card can paint its cover instead of its placeholder.
+  void _warmFeedCovers(List<BaseRcmdVideoItemModel> shown) {
+    final covers = <String>[];
+    for (final model in shown) {
+      final cover = model.cover;
+      if (cover == null || cover.isEmpty || !_warmedCoverUrls.add(cover)) {
+        continue;
+      }
+      covers.add(cover);
+      // The snapshot keeps up to this many cards; warm the same set so a
+      // restored page can paint its covers without a fresh download.
+      if (covers.length >= AiFeedSnapshot.maxVisibleItems) break;
+    }
+    if (covers.isEmpty) return;
+    unawaited(() async {
+      try {
+        final manager = CacheManager.manager;
+        for (final cover in covers) {
+          try {
+            await manager.getSingleFile(ImageUtils.thumbnailUrl(cover));
+          } catch (_) {
+            // A cover that cannot be fetched now is simply retried by the
+            // widget when the card is displayed.
+          }
+        }
+      } catch (_) {
+        // Cache manager not initialized (tests); the widget will fetch it.
+      }
+    }());
+  }
+
+  /// Scores the cards currently on screen, then fetches and scores the next
+  /// page for a later refresh. The refresh never waits for this work: it
+  /// paints from cache first and [ _applyRankedNow ] drops the freshly scored
+  /// order in as soon as the model answers.
   void _scheduleAiPrefetch() {
-    if (!aiEnabled || _preparingAi) return;
+    if (!aiEnabled) return;
+    if (_preparingAi) {
+      // A refresh landed while the worker was still busy: run again once the
+      // current pass finishes so the new page is scored too.
+      _prefetchQueued = true;
+      return;
+    }
     final settings = _ai.settings;
     final source = appRcmd ? 'app' : 'web';
     final accountScope = _ai.recommendScope;
@@ -306,6 +535,43 @@ class RcmdController extends CommonListController {
     unawaited(() async {
       var lastCursor = startCursor;
       try {
+        // Score what the user is looking at before preparing the next page.
+        // A page prepared ahead of time is only consumed by a later refresh,
+        // so waiting for it left the bar on "local rules" while the model was
+        // already answering for cards that were not on screen.
+        final onScreen = List<BaseRcmdVideoItemModel>.of(_allCandidates);
+        final screenToken = _aiToken;
+        if (onScreen.isNotEmpty && screenToken != null) {
+          final screenSettings = settings.copyWith(
+            firstPaintBudgetMs: 30000,
+            requestTimeoutMs: 30000,
+            maxBatchesPerRefresh: 3,
+          );
+          final rankedNow = await _ai.pipeline.rankPage(
+            models: onScreen,
+            source: source,
+            accountScope: accountScope,
+            token: screenToken,
+            isCurrent: () =>
+                epoch == _prefetchEpoch && _aiSession.isCurrent(screenToken),
+            lastShownAtMs: _lastShownAtMs,
+            settingsOverride: screenSettings,
+            waitForAi: true,
+          );
+          if (epoch != _prefetchEpoch) return;
+          if (!_aiSession.isCurrent(screenToken)) return;
+          if (rankedNow.freshScores > 0) {
+            aiBlockedReason.value = '';
+            _applyRankedNow(rankedNow);
+            return;
+          }
+          if (rankedNow.cacheHits == 0 && rankedNow.statusDetail.isNotEmpty) {
+            // Nothing cached and nothing fresh: the next page would hit the
+            // same wall, so report it instead of retrying quietly.
+            aiBlockedReason.value = rankedNow.statusDetail;
+            return;
+          }
+        }
         final pages = settings.mode == AiRecommendMode.strict ? 3 : 1;
         final models = <BaseRcmdVideoItemModel>[];
         final seen = <String>{};
@@ -344,7 +610,16 @@ class RcmdController extends CommonListController {
           waitForAi: true,
         );
         if (epoch != _prefetchEpoch) return;
-        if (ranked.freshScores == 0 && ranked.cacheHits == 0) return;
+        if (ranked.freshScores == 0 && ranked.cacheHits == 0) {
+          // The worker produced nothing usable: budget used up, key rejected,
+          // model unreachable. Say so instead of silently staying on local
+          // rules until the user gives up on the feature.
+          aiBlockedReason.value = ranked.statusDetail.isNotEmpty
+              ? ranked.statusDetail
+              : ranked.status.label;
+          return;
+        }
+        aiBlockedReason.value = '';
         if (signature != _ai.settings.toJson()) return;
         if (source != (appRcmd ? 'app' : 'web') ||
             accountScope != _ai.recommendScope) {
@@ -358,12 +633,50 @@ class RcmdController extends CommonListController {
           accountScope: accountScope,
           source: source,
         );
-      } catch (_) {
+      } catch (e) {
         // Background best effort; the next refresh falls back to local rules.
+        // Keep the reason so the status bar can explain the fallback.
+        aiBlockedReason.value = '后台评分失败：$e';
       } finally {
         _preparingAi = false;
+        if (_prefetchQueued) {
+          _prefetchQueued = false;
+          _scheduleAiPrefetch();
+        }
       }
     }());
+  }
+
+  /// Hands a freshly scored page to the screen without another upstream
+  /// fetch or model call. Reordering in place is only safe while the feed is
+  /// exactly as it was painted: once the user scrolled or refreshed, the new
+  /// order is offered for confirmation instead.
+  void _applyRankedNow(AiRankedPage ranked) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final models = <BaseRcmdVideoItemModel>[];
+    for (final item in ranked.items) {
+      final model = _modelsByBvid[item.features.bvid];
+      if (model == null) continue;
+      models.add(model);
+      _lastShownAtMs[item.features.bvid] = now;
+    }
+    if (models.isEmpty) return;
+    if (loadingState.value case Success(:final response)) {
+      if (response == null || response.length != _aiPaintedLength) {
+        aiNewRankingReady.value = true;
+        return;
+      }
+      aiPage.value = ranked;
+      aiNewRankingReady.value = false;
+      response
+        ..clear()
+        ..addAll(models);
+      loadingState.refresh();
+      _aiPaintedLength = models.length;
+      unawaited(_persistFeedSnapshot(models, ranked));
+      return;
+    }
+    aiNewRankingReady.value = true;
   }
 
   Future<LoadingState> _loadMoreWithAi() async {
@@ -442,7 +755,9 @@ class RcmdController extends CommonListController {
     // there are none, and returning true here left the feed on its skeleton
     // with no message and no retry - the screen simply never filled. That is
     // what "首页看不到内容" looks like from the outside.
-    if (!enableSaveLastData) return false;
+    // Cached cards restored at start-up are just as worth keeping as the
+    // in-memory saved list: the user already saw them before the refresh.
+    if (!enableSaveLastData && !_feedRestored) return false;
     if (loadingState.value case Success(:final response)) {
       return response != null && response.isNotEmpty;
     }
@@ -529,6 +844,8 @@ class RcmdController extends CommonListController {
     } else {
       loadingState.value = Success<List<BaseRcmdVideoItemModel>>(models);
     }
+    _aiPaintedLength = models.length;
+    unawaited(_persistFeedSnapshot(models, ranked));
   }
 
   Future<void> aiUndo() async {

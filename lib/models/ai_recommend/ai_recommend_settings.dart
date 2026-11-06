@@ -100,6 +100,11 @@ class AiRecommendSettings {
   /// is sent in clear text on that hop; public HTTP hosts remain rejected.
   final bool allowInsecureHttp;
 
+  /// Upper bound accepted for [dailyRequestBudget]. The gate only stops new
+  /// requests, so this exists to catch typos (a stray zero) rather than to
+  /// mirror a provider limit.
+  static const int maxDailyRequestBudget = 100000;
+
   bool get hasModel => baseUrl.trim().isNotEmpty && model.trim().isNotEmpty;
 
   bool get hasExplicitPreference =>
@@ -166,7 +171,12 @@ class AiRecommendSettings {
       baseUrl: pick<String>('baseUrl', '').trim(),
       model: pick<String>('model', '').trim(),
       providerPreset: pick<String>('providerPreset', 'custom'),
-      dailyRequestBudget: intIn('dailyRequestBudget', 100, 0, 1000),
+      dailyRequestBudget: intIn(
+        'dailyRequestBudget',
+        100,
+        0,
+        maxDailyRequestBudget,
+      ),
       explorationRatio: doubleIn('explorationRatio', 0.2, 0, 0.5),
       profileRetentionDays: intIn('profileRetentionDays', 90, 7, 365),
       strictThreshold: doubleIn('strictThreshold', 0.55, 0.3, 0.95),

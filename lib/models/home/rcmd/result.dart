@@ -1,7 +1,9 @@
+import 'package:PiliPlus/models/model_owner.dart';
 import 'package:PiliPlus/models/model_rec_video_item.dart';
 import 'package:PiliPlus/models/model_video.dart';
 import 'package:PiliPlus/utils/id_utils.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
+import 'package:PiliPlus/utils/parse_int.dart';
 import 'package:PiliPlus/utils/parse_string.dart';
 
 class RcmdVideoItemAppModel extends BaseRcmdVideoItemModel {
@@ -72,6 +74,68 @@ class RcmdVideoItemAppModel extends BaseRcmdVideoItemModel {
         : null;
     desc = json['desc'];
   }
+
+  /// Rebuilds a card from the home feed cache. Only display fields survive;
+  /// the cached card never claims to be fresher than the feed item it came
+  /// from, so a missing value stays null.
+  RcmdVideoItemAppModel.fromCacheJson(Map<String, dynamic> json) {
+    title = json['title'] as String? ?? '';
+    bvid = json['bvid'] as String?;
+    cid = safeToInt(json['cid']);
+    aid = safeToInt(json['aid']);
+    goto = json['goto'] as String?;
+    uri = json['uri'] as String?;
+    cover = json['cover'] as String?;
+    duration = safeToInt(json['duration']) ?? -1;
+    pubdate = safeToInt(json['pubdate']);
+    desc = json['desc'] as String?;
+    rcmdReason = json['rcmdReason'] as String?;
+    isFollowed = json['isFollowed'] == true;
+    param = safeToInt(json['param']);
+    pgcBadge = json['pgcBadge'] as String?;
+    owner = Owner(
+      mid: safeToInt(json['ownerMid']),
+      name: json['ownerName'] as String?,
+    );
+    stat = Stat.fromJson({
+      'view': json['view'],
+      'like': json['like'],
+      'danmaku': json['danmu'],
+    });
+    talkBack = json['talkBack'] as String?;
+    cardType = json['cardType'] as String?;
+    threePoint = switch (json['threePoint']) {
+      final Map raw => ThreePoint.fromCacheJson(raw.cast<String, dynamic>()),
+      _ => null,
+    };
+  }
+
+  @override
+  Map<String, dynamic> toCacheJson() => {
+    'kind': 'app',
+    'title': title,
+    'bvid': bvid,
+    'cid': cid,
+    'aid': aid,
+    'goto': goto,
+    'uri': uri,
+    'cover': cover,
+    'duration': duration,
+    'pubdate': pubdate,
+    'desc': desc,
+    'rcmdReason': rcmdReason,
+    'isFollowed': isFollowed,
+    'param': param,
+    'pgcBadge': pgcBadge,
+    'ownerMid': owner.mid,
+    'ownerName': owner.name,
+    'view': stat.view,
+    'like': stat.like,
+    'danmu': stat.danmu,
+    'talkBack': talkBack,
+    'cardType': cardType,
+    'threePoint': threePoint?.toCacheJson(),
+  };
 }
 
 class RcmdStat extends BaseStat {
@@ -114,6 +178,24 @@ class ThreePoint {
       }
     }
   }
+
+  ThreePoint.fromCacheJson(Map<String, dynamic> json) {
+    dislikeReasons = _reasonsOf(json['dislike']);
+    feedbacks = _reasonsOf(json['feedback']);
+  }
+
+  Map<String, dynamic> toCacheJson() => {
+    'dislike': dislikeReasons?.map((r) => r.toCacheJson()).toList(),
+    'feedback': feedbacks?.map((r) => r.toCacheJson()).toList(),
+  };
+
+  static List<Reason>? _reasonsOf(dynamic raw) {
+    if (raw is! List) return null;
+    return [
+      for (final reason in raw)
+        if (reason is Map) Reason.fromCacheJson(reason.cast<String, dynamic>()),
+    ];
+  }
 }
 
 class Reason {
@@ -126,4 +208,16 @@ class Reason {
     name = json['name'];
     toast = json['toast'];
   }
+
+  Reason.fromCacheJson(Map<String, dynamic> json) {
+    id = safeToInt(json['id']);
+    name = json['name'] as String?;
+    toast = json['toast'] as String?;
+  }
+
+  Map<String, dynamic> toCacheJson() => {
+    'id': id,
+    'name': name,
+    'toast': toast,
+  };
 }

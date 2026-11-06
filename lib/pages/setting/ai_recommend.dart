@@ -96,8 +96,9 @@ class _AiRecommendSettingsPageState extends State<AiRecommendSettingsPage> {
     pausedLearning: _paused,
     baseUrl: _baseUrl.text.trim(),
     model: _model.text.trim(),
-    dailyRequestBudget:
-        int.tryParse(_budget.text.trim()) ?? _settings.dailyRequestBudget,
+    dailyRequestBudget: (int.tryParse(_budget.text.trim()) ??
+            _settings.dailyRequestBudget)
+        .clamp(0, AiRecommendSettings.maxDailyRequestBudget),
     explorationRatio: _exploration,
     strictThreshold: _threshold,
     profileRetentionDays: _retention,
@@ -110,6 +111,7 @@ class _AiRecommendSettingsPageState extends State<AiRecommendSettingsPage> {
     setState(() => _busy = true);
     var next = _collect();
     final old = _settings;
+    var clearStoredKey = false;
     final parsed = Uri.tryParse(next.baseUrl);
     if (parsed != null &&
         parsed.scheme == 'http' &&
@@ -142,16 +144,20 @@ class _AiRecommendSettingsPageState extends State<AiRecommendSettingsPage> {
       next = _collect();
     }
     if (!mounted) return;
+    // An empty stored URL means there is no trusted endpoint to switch away
+    // from (fresh install, restored data). Treating that as a change used to
+    // delete the only key the user had.
+    final oldBase = old.baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     final baseChanged =
-        old.baseUrl.trim().replaceAll(RegExp(r'/+$'), '') !=
-        next.baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+        oldBase.isNotEmpty &&
+        oldBase != next.baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     if (baseChanged && _hasKey) {
       final ok = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('模型服务地址已更改'),
           content: const Text(
-            '旧 API Key 不会发送到新地址，保存后会从本机安全存储中删除，需要重新填写。',
+            '旧 API Key 不会发送到新地址。确认后旧 Key 会被移除，除非你在下方填写了新 Key。',
           ),
           actions: [
             TextButton(
@@ -169,6 +175,9 @@ class _AiRecommendSettingsPageState extends State<AiRecommendSettingsPage> {
         setState(() => _busy = false);
         return;
       }
+      // The dialog promised removal; an empty field means there is nothing to
+      // replace it with.
+      clearStoredKey = _apiKey.text.trim().isEmpty;
     }
     try {
       await _service.saveSettings(
@@ -176,6 +185,14 @@ class _AiRecommendSettingsPageState extends State<AiRecommendSettingsPage> {
         apiKey: _apiKey.text.trim().isEmpty ? null : _apiKey.text.trim(),
       );
       _settings = next;
+      if (clearStoredKey) {
+        await _service.clearApiKey();
+      }
+      // Show the stored value: an out-of-range entry is clamped on read, and
+      // leaving the typed text untouched would claim a budget that is not in
+      // effect.
+      final budgetText = next.dailyRequestBudget.toString();
+      if (_budget.text.trim() != budgetText) _budget.text = budgetText;
       _apiKey.clear();
       await _loadKeyState();
       if (!quiet) SmartDialog.showToast('已保存');
@@ -456,7 +473,10 @@ class _AiRecommendSettingsPageState extends State<AiRecommendSettingsPage> {
               ),
               ListTile(
                 title: const Text('每日请求预算'),
-                subtitle: Text('用于限制模型费用；重试也计入'),
+                subtitle: Text(
+                  '用于限制模型费用，重试也计入；0–' +
+                      AiRecommendSettings.maxDailyRequestBudget.toString(),
+                ),
                 trailing: SizedBox(
                   width: 90,
                   child: TextField(

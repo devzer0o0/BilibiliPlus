@@ -80,30 +80,21 @@ class AiRecommendationService {
 
   bool get historyAccountMatchesRecommend => recommendScope == historyScope;
 
+  /// Persists settings and, only when [apiKey] carries a new value, replaces
+  /// the stored key.
+  ///
+  /// Saving never clears the key on its own. Deleting it whenever the endpoint
+  /// changed used to wipe a working credential when the previous settings could
+  /// not be read (fresh install, restored data), so "save and test" with an
+  /// empty field looked like it erased the key. Removal is now an explicit
+  /// action: [clearApiKey] from the settings page.
   Future<void> saveSettings(
     AiRecommendSettings next, {
     String? apiKey,
   }) async {
-    final previous = settings;
-    final baseChanged =
-        _normalizeUrl(previous.baseUrl) != _normalizeUrl(next.baseUrl);
     await Pref.saveAiRecommendSettings(next);
-    if (baseChanged || next.baseUrl.trim().isEmpty) {
-      // A key is bound to the endpoint the user approved. Moving to another
-      // endpoint (or a restored one) must not silently receive the old key.
-      try {
-        await secrets.delete(SecretKeys.aiApiKey);
-      } catch (_) {
-        // The old key is unusable anyway once the endpoint changed.
-      }
-    }
-    if (apiKey != null && apiKey.trim().isNotEmpty) {
-      await secrets.write(SecretKeys.aiApiKey, apiKey.trim());
-    }
+    await applyApiKeyTo(secrets, apiKey: apiKey);
   }
-
-  static String _normalizeUrl(String value) =>
-      value.trim().replaceAll(RegExp(r'/+$'), '').toLowerCase();
 
   Future<bool> hasApiKey() async {
     try {
@@ -237,4 +228,13 @@ class AiRecommendationService {
       accountScope: recommendScope,
     );
   }
+}
+
+/// Writes [apiKey] only when it holds a value. Saving settings with an empty
+/// field leaves the stored credential untouched; explicit removal goes through
+/// [AiRecommendationService.clearApiKey].
+Future<void> applyApiKeyTo(SecretStore secrets, {String? apiKey}) async {
+  final trimmed = apiKey?.trim() ?? '';
+  if (trimmed.isEmpty) return;
+  await secrets.write(SecretKeys.aiApiKey, trimmed);
 }

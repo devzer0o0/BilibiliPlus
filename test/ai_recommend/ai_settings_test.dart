@@ -51,6 +51,17 @@ void main() {
     expect(s.wantTags, isEmpty);
   });
 
+  test('a large daily budget survives a round trip', () {
+    final s = AiRecommendSettings.fromMap({'dailyRequestBudget': 10000});
+    expect(s.dailyRequestBudget, 10000);
+    expect(
+      AiRecommendSettings.fromMap(s.toMap()).dailyRequestBudget,
+      10000,
+    );
+    final huge = AiRecommendSettings.fromMap({'dailyRequestBudget': 9999999});
+    expect(huge.dailyRequestBudget, AiRecommendSettings.maxDailyRequestBudget);
+  });
+
   test('first paint budget clamps to the measured minimum', () {
     final old = AiRecommendSettings.fromMap({'firstPaintBudgetMs': 800});
     expect(old.firstPaintBudgetMs, 2000);
