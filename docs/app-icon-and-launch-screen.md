@@ -1,84 +1,172 @@
 # 应用图标与启动画面
 
-本文记录 App 图标的来源与当前配色（金属金 `#D4AF37`），以及启动画面的相关问题。
+本页记录 **PiliPlus（iOS 显示名 `bilibili+`）** 当前图标的设计来源、生成方式、资源清单与验收结果。
 
-## 图标来源与配色
+上一版图标是"bilibili 国际版官方图标只换颜色"（金黄色底 + 白色 bilibili 字标 + 左上角地球）。
+本次按需求**重新设计**为 B 站百万粉丝纪念奖牌中央的金色小电视，不再保留字标、地球或底色渐变，
+也不再使用"对旧图原地换色"的脚本。
 
-图标不是手绘，而是取自 bilibili 国际版官方 App 资源（App Store bundle id `com.bilibili.inter`，1024×1024），
-只改颜色、不改形状：粉红 `#FF417E` 系渐变被替换为**金属金 `#D4AF37`**（RGB 212, 175, 55）。
+![左：旧图标（金黄底 + 白色 bilibili 字标 + 地球）；右：新图标（黑色背景 + 金色小电视）。](images/app-icon-before-after.png)
 
-字形、比例、地球图形、白色区域全部保持原样，未重绘。
+*左：旧图标；右：新图标。旧版的金色底色、白色字标与地球角标全部移除。*
 
-![左：bilibili 国际版原始图标，粉红底配白色 bili 字标。右：当前图标，除把粉红换成金属金 #D4AF37 外，形状、比例与细节完全一致。](images/app-icon-comparison.png)
+## 设计来源
 
-*左：bilibili 国际版原始图标，粉红底配白色 bili 字标。右：当前图标，除把粉红换成金属金 `#D4AF37` 外，形状、比例与细节完全一致。*
+主参考是「大耳朵TV」的百万粉丝奖牌开箱视频：
 
-### 配色为什么不直接平铺
+- 标题：**B站100万粉丝奖牌开箱 & 评测｜大耳朵TV**
+- BVID：**BV1afN7zeEJ7**
+- 使用部分：奖牌**中央的金色小电视**（不含奖牌底座、粉丝数字、文字与底脚）
 
-原图并非纯色，而是一层极窄的渐变（均值 `(255, 79.6, 136.7)`）。为了不把渐变抹平成一块死色，
-替换时保留了每个像素相对该均值的**小幅偏移**，而不是逐像素统一改写为目标色：
+辅助实物照片（同一款奖牌的近景）用于校准金属反射与倒角观感。网上另有带底脚、旋钮或不同屏幕比例的
+款式，本次**没有**混用它们的结构。
+
+![左：视频封面里的奖牌；中：实物近景；右：本设计 1024 母版。](images/app-icon-reference-compare.png)
+
+*左：视频封面里的奖牌；中：实物近景（用于材质与倒角）；右：本设计。参考图仅作造型比对，尺寸与布光已按 App 图标重排。*
+
+## 造型
+
+只提取中央小电视，做成独立图标主体：
+
+| 部位 | 处理 |
+| --- | --- |
+| 机身 | 宽大于高的圆角矩形，约 **1.19 : 1**，四周连续厚倒角 |
+| 天线 | 顶部两根短天线，向左上/右上张开，端头圆润，与机身同材质 |
+| 屏框 | 内凹的圆角矩形屏面，外围一圈宽边框，边框内侧有连续阴影 |
+| 眼睛 | 两段短而粗的圆头金色浮雕条：左眼 `/`、右眼 `\`，约斜 14°，顶面略向光侧俯仰 |
+| 嘴巴 | 圆润的双弧 `ω`：两端上翘、中间一个圆峰，细金色浮雕棱 |
+| 其余 | 无底脚、无四肢、无旋钮、无扬声器孔、无桂冠/星芒/文字/角标 |
+
+视角接近正交正面（约 11° 等效视场），厚度只靠倒角与少量侧面明暗表达。
+
+## 材质与布光
+
+抛光黄金，金属度 1、粗糙度约 0.13（屏面）/ 0.175（机身）；金属 F0（线性）约
+`(1.00, 0.67, 0.235)`。颜色层次用深金、暖金、亮金建立，而不是平铺一个金色：
+
+- 深金反射 `#6B4518`、暗金过渡 `#A77524`、主体暖金 `#D5AC45`、亮金 `#F3D984`、局部高光 `#FFF2CC`；
+- 左上方大面积柔光（窗口），右侧较弱补光，顶部窄条轮廓光，地面暖反弹；
+- 倒角有窄而亮的反射，曲面和侧边保留受控的深金反射；主面不过曝成白块；
+- 屏框与表情根部只有窄阴影，不做黑边；不使用塑料/果冻/金箔/亮粉/拉丝质感。
+
+参考照片里的手机、人物、房间和玻璃反光没有被复制：这里用干净的摄影棚环境替代。
+
+## 生成方式
+
+**没有可用的图像生成模型**，因此没有用扩散模型出图；母版由可编辑的三维几何 + 物理着色渲染器生成，
+按需求中的"通过可编辑路径或三维几何校准"执行。所有形状参数都在
+`tool/app_icon/render_icon.py` 顶部的常量里，改一个数值即可重渲染，不会随机换一只小电视。
+
+渲染器：SDF 光线步进（机身/天线/眼睛）+ 前表面高度场浮雕（屏面/嘴唇）+ 程序化棚拍环境 +
+GGX 直接光 + ACES + sRGB，再做一个很轻的饱和度整理。输出：
 
 ```
-目标色 = #D4AF37 + (原像素 - 原图标均值) × k
+design/app_icon/master-2048.png          2048×2048，不透明 sRGB 设计母版
+design/app_icon/icon-1024.png            1024×1024，iOS 图标设计稿（4× 超采样后落地）
+design/app_icon/tv-transparent-1024.png  1024×1024，透明背景金色小电视（启动画面/前景用）
 ```
 
-输出校验：主色均值实测 `(211,174,54)`，与目标 `(212,175,55)` 相差 1/255；色相 45.8°。
+构图实测：机身宽 **76.4%** 画布、含天线总高 **78.0%** 画布，水平居中；背景
+`#151515` → `#24211C` 的极轻微暖黑变化；四周留白 9%–13%，天线与倒角不贴边。
+IOS 图标本身不做圆角裁切，四角完全不透明；系统负责蒙版。
 
-> 实现见 `tool/recolor_app_icon.py`：色相按圆周均值旋转到金色，饱和度与明度按"目标值 − 当前均值"整体平移，
-> 逐像素的细微差异保留下来，所以渐变与抗锯齿边不会被抹平；白色字标、地球高光与透明区域（饱和度低于阈值）完全不动。
->
-> 这个脚本同时是**唯一产出途径**：它从 1024 母版重出全部 AppIcon 尺寸、6 张启动图、仓库里的 logo 母版、桌面图标与 `.ico`，
-> 避免再出现"母版换了、包里还是旧图"的情况（蓝变金之前就发生过：母版是绿色，包里装的是蓝色）。
+### 可重复的母版 → 派生资源流程
 
-## 安装产物核验
+```bash
+# 首次：准备带 Pillow + numpy 的 Python 环境（任意 venv 均可）
+python3 -m venv /tmp/piliplus-icon-venv
+/tmp/piliplus-icon-venv/bin/pip install pillow numpy
 
-图标必须确认已编译进产物，而非只改了源文件。下面是直接从 `Runner.app` 内取出的 120×120 图标：
+# 1) 重渲染设计母版（确定性，无随机数）
+/tmp/piliplus-icon-venv/bin/python tool/app_icon/render_icon.py \
+  --master design/app_icon/master-2048.png \
+  --icon design/app_icon/icon-1024.png \
+  --transparent design/app_icon/tv-transparent-1024.png
 
-![从 Runner.app 内提取的 120×120 图标，证明金色图标确实进入了构建产物。](images/app-icon-installed-120.png)
+# 2) 只从母版派生所有工程资源
+/tmp/piliplus-icon-venv/bin/python tool/app_icon/build_assets.py
+```
 
-*从 `Runner.app` 内提取的 120×120 图标，证明金色图标确实进入了构建产物。*
+`build_assets.py` 每次都从三张母版重新采样，不会读取上一次的派生文件，也不会累积换色或反复缩放。
+旧的 `tool/recolor_app_icon.py` 已删除：它把启动图**原地换色**，无法把新造型同步过去。
 
-高分辨率母版：
+## 资源清单
 
-![当前图标的 1024×1024 母版（金属金），所有尺寸由它派生。](images/app-icon-gold.png)
+| 路径 | 用途 | 规格 |
+| --- | --- | --- |
+| `ios/Runner/Assets.xcassets/AppIcon.appiconset/*.png` | iOS 桌面图标 | 25 条引用 / 21 个文件，20–1024，PNG sRGB、无 alpha |
+| `ios/Runner/Assets.xcassets/LaunchImage.imageset/*.png` | iOS 启动图 | 128/256/384（light+dark），RGBA 透明 |
+| `assets/images/logo/app_icon_ios_1024.png` | iOS/桌面图标源 | 1024 不透明 |
+| `assets/images/logo/app_icon_foreground.png` | Android 自适应前景 | 512 透明，内容收在 66% 安全区 |
+| `assets/images/logo/app_icon_monochrome.png` | Android 单色图标 | 512 白色 alpha 蒙版 |
+| `assets/images/logo/logo.png` | 关于页图标 | 512 不透明 |
+| `assets/images/logo/logo_2.png` | 启动/占位图（透明） | 512 RGBA |
+| `assets/images/logo/desktop/logo_large.png` | Linux/macOS 托盘 | 512 不透明 |
+| `assets/images/logo/ico/app_icon.ico` | Windows 图标 | 16–256 多尺寸 |
 
-*当前图标的 1024×1024 母版（金属金 `#D4AF37`），所有尺寸由它派生。*
-
-## 覆盖的尺寸
-
-`ios/Runner/Assets.xcassets/AppIcon.appiconset/` 下**全部尺寸都由 1024 母版重出**（20×20 到 1024×1024），
-不是只换大图、让小图继续引用旧资源。这一点确实出过问题：母版是绿色的，包里装的却是蓝色的旧图。
+`pubspec.yaml` 的 `flutter_launcher_icons` 已改为指向 1024 母版
+（`image_path_ios` / `image_path` / `macos.image_path`），
+Android 自适应前景指向安全区版本，背景色 `#151515`。这样后续再跑生成命令不会从旧的
+512 桌面图或低分辨率文件反向覆盖本次结果。
 
 ## 启动画面
 
-### 无法移除，只能替换
+iOS 的 launch storyboard 不能删除，只能替换（`UILaunchStoryboardName`）。本次保持原有布局与背景衔接：
 
-iOS 强制要求提供 launch storyboard（`Info.plist` 的 `UILaunchStoryboardName`），
-因此"去除启动动画"在平台层面不可行。改为把它做快、做对：
+- 尺寸仍是 128/256/384（1x/2x/3x），storyboard 的 `contentMode="center"` 与全屏约束不变；
+- 黑色 storyboard 底色不变，与 `scaffoldBackgroundColor: Colors.black` 衔接；
+- 图形从旧版"圆角方形图标"改为**同一设计来源的透明金色小电视**，不再有圆角方形底板；
+- 浅色/深色两套使用同一张透明素材（启动图本身不铺底色，底色由 storyboard/系统提供）。
 
-1. **图标替换** — 启动图原本仍是旧的绿色 "P"，与桌面图标不一致。现同步为新图标。
-2. **底色修正** — 启动底色原为纯白，深色主题下会先白闪一下再进 App。已改为纯黑，与 `scaffoldBackgroundColor: Colors.black` 衔接。
-3. **图形处理** — 启动图改为圆角 + 透明背景，避免在黑底上出现一块方形蓝块。
+![模拟器截图：主屏图标（iPhone 17e 模拟器）。系统施加圆角遮罩，天线未被裁切。](images/app-icon-simulator-home.png)
 
-### 启动耗时实测
+![模拟器截图：冷启动画面。黑色背景与透明金色小电视。](images/app-icon-simulator-launch.png)
 
-在 `main()` 中加了阶段计时（`_markStartup`），三次冷启动结果一致：
+*以上为 iPhone 17e 模拟器截图，**不是真机验收证据**。真机安装未做。*
 
-| 阶段 | 耗时 |
+## 验收记录
+
+| 检查 | 结果 |
 | --- | --- |
-| binding + mediakit | 起始 |
-| appPath | 12 ms |
-| storage | 22 ms |
-| paths + cache + fonts | 29 ms |
-| orientation + locator + pip | 31 ms |
-| request-init | 31 ms |
+| AppIcon 文件与 `Contents.json` | 25 条引用（21 个唯一文件）全部存在，实际像素尺寸逐项匹配（20–1024） |
+| 1024 图标颜色模式/透明通道 | `RGB`，`hasAlpha: no`，内嵌 sRGB profile |
+| 四角 | 不透明（无透明/白色角），不预裁圆角 |
+| 小尺寸 | 180/120/60/40 实测（见下），120 表情清楚，60 仍可辨认金色小电视与天线 |
+| 旧字标/地球残留 | 新 AppIcon、启动图、logo、ico 均无白色 bilibili 字标或地球角标 |
+| 资源链路可重复 | 两次完整运行母版渲染与资源生成，母版/图标/启动图/ico 的 SHA-256 逐字节一致 |
+| 资产目录编译 | `actool` 编译 `Assets.xcassets` 通过，产出 `AppIcon60x60@2x` 等 |
+| 编译产物 | `flutter build ios --debug --no-codesign` 成功；`Runner.app` 内 120×120 图标为 RGB、无 alpha、sRGB |
+| 模拟器 | iPhone 17e 模拟器安装后桌面图标与冷启动画面正确（见上）；真机未验证 |
 
-Dart 侧到 `runApp` 仅 **31 ms**。整体冷启动约 2.0–2.6 秒，其余时间花在 Flutter 引擎启动与首帧渲染上，
-不在 `main()` 的初始化里。因此进一步压缩启动耗时不能靠裁剪初始化代码。
+![180/120/60/40 像素的实际大小（上）与 4× 放大（下）。](images/app-icon-sizes.png)
+
+*180/120/60/40 像素的实际大小（上）与 4× 放大（下）。60 像素下脸部仍可辨认，40 像素下轮廓与天线仍清楚，没有糊成黄色方块。*
+
+### 构建产物与模拟器
+
+- `actool` 编译 `Assets.xcassets` 通过；`flutter build ios --debug --no-codesign`
+  成功（Xcode build 86.6 s，Flutter 3.47.6）。
+- `build/ios/iphoneos/Runner.app` 内 `AppIcon60x60@2x.png`：120×120、RGB、无 alpha、sRGB；
+  `Info.plist` 的 `CFBundleDisplayName` 为 `bilibili+`。
+- 在 iPhone 17e 模拟器安装后：桌面图标（系统圆角遮罩、天线未裁切）与冷启动画面均正确。
+- 本次调试构建启动到主界面时触发了与图标无关的 GetX 断言（当前分支并发改动），
+  未在本任务中修改运行时代码；图标与启动图截图不受影响。
 
 ## 应用名称
 
-`ios/Runner/Info.plist` 中 `CFBundleDisplayName` 与 `CFBundleName` 均为 `bilibili+`。
-设备端 `devicectl device info apps` 已确认显示为 `bilibili+`。
+`ios/Runner/Info.plist` 中 `CFBundleDisplayName` 与 `CFBundleName` 仍为 `bilibili+`；
+Bundle ID 仍为 `com.example.pilipalax`。本次只改图标资源，不改应用名、Bundle ID 或业务代码。
 
-Bundle ID 保持 `com.example.pilipalax` 不变。
+## 未验证项
+
+- **物理设备**未安装、未截取桌面图标与冷启动画面；模拟器截图不能替代真机验收。
+- Android 启动器资源（`android/app/src/main/res`）未重新生成：该目录在当前工作区未被 Git 跟踪，
+  且本次任务以 iOS 为主。`pubspec.yaml` 的生成配置已指向新的 1024 母版与安全区前景，
+  后续运行 `flutter_launcher_icons` 会从新母版生成各平台图标。
+- macOS 没有随仓库提交的 AppIcon 资源；配置同样指向新母版。
+
+## 冷启动耗时
+
+上一版实测（本次未重复测量）：Dart 侧到 `runApp` 约 31 ms，整体冷启动约 2.0–2.6 s，时间主要花在
+Flutter 引擎启动与首帧渲染，不在 `main()` 初始化。该结论与图标替换无关，保留供后续参考。
