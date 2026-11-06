@@ -170,10 +170,33 @@ iOS 会把 launch storyboard 的渲染结果缓存到 `SplashBoard`。**只替�
 `ios/Runner/Info.plist` 中 `CFBundleDisplayName` 与 `CFBundleName` 仍为 `bilibili+`；
 Bundle ID 仍为 `com.example.pilipalax`。本次只改图标资源，不改应用名、Bundle ID 或业务代码。
 
+## 真机验收（iPhone Air，2026-11-06）
+
+使用 `PILIPLUS_DEVELOPMENT_TEAM=8TQDS9JT23 tool/ios_build.sh profile` 构建（Team 8TQDS9JT23，
+AV1 VideoToolbox Avcodec 已注入并重签），`devicectl device install app` 覆盖安装到
+"Fred的iPhone Ultra🪼"（iPhone Air, iPhone18,4）：
+
+| 检查 | 结果 |
+| --- | --- |
+| 安装版本 | `bilibili+ 0.0.3 (4)`（`devicectl device info apps`） |
+| 冷启动 | `devicectl device process launch` 成功，App 正常运行到推荐页 |
+| 启动快照缓存 | `Library/SplashBoard` 下 4 个快照全部重新生成（SHA-256 与旧快照完全不同，时间戳=安装时刻），旧的 DeepSeek 蓝快照已消失 |
+| 编译产物 | `Assets.car` 只含 `LaunchImageGoldTV`，不再有旧 `LaunchImage` 条目（`assetutil --info`） |
+| 启动画面截图 | **未捕获到**：profile 构建启动过快，`devicectl capture screenshot` 延迟追不上；此设备不支持 `capture screen-record`。快照重建 + 模拟器画面为间接证据 |
+
+![真机截图：App 运行中（0.0.3 (4)）。](images/app-icon-device-running.png)
+
+*真机截图：iPhone Air 上 0.0.3 (4) 运行中。启动画面本身未被截到（消失快于截图延迟），
+其内容以模拟器截图与快照重建记录为准。*
+
 ## 未验证项
 
-- **物理设备**未由本会话安装、未截取桌面图标与冷启动画面；模拟器截图不能替代真机验收。
-  设备上残留的 DeepSeek 蓝启动图是旧的 `SplashBoard` 快照（见“启动快照缓存”），安装 build 4 或删除重装后消失。
+- **桌面图标与启动画面的真机截图**：设备会自动锁屏，且启动画面消失快于截图延迟；
+  解锁状态下主屏图标肉眼可见为金色小电视（本次未留截图）。
+- Android 启动器资源（`android/app/src/main/res`）未重新生成：该目录在当前工作区未被 Git 跟踪，
+  且本次任务以 iOS 为主。`pubspec.yaml` 的生成配置已指向新的 1024 母版与安全区前景，
+  后续运行 `flutter_launcher_icons` 会从新母版生成各平台图标。
+- macOS 没有随仓库提交的 AppIcon 资源；配置同样指向新母版。
 - Android 启动器资源（`android/app/src/main/res`）未重新生成：该目录在当前工作区未被 Git 跟踪，
   且本次任务以 iOS 为主。`pubspec.yaml` 的生成配置已指向新的 1024 母版与安全区前景，
   后续运行 `flutter_launcher_icons` 会从新母版生成各平台图标。
