@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040">
+
+<defs>
+  <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse">
+    <circle cx="2" cy="2" r="1.2" fill="#E4D6C3"/>
+  </pattern>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#1E1B2E"/>
+  </marker>
+</defs>
+<rect width="1600" height="1040" fill="#FFF8EE"/>
+<rect width="1600" height="1040" fill="url(#dots)" opacity=".9"/>
+<circle cx="1390" cy="120" r="180" fill="#FF6B9A" opacity=".08"/>
+<circle cx="120" cy="920" r="220" fill="#62D2E8" opacity=".08"/>
+<g opacity=".55" stroke="#FFE4D8" stroke-width="1">
+  <path d="M -100 20 L 340 170"/><path d="M -60 70 L 360 210"/><path d="M 1140 0 L 1520 160"/>
+</g>
+<g fill="#FFB7CD" opacity=".85">
+  <path d="M 1400 70 q 18 -22 34 -4 q 12 16 -10 26 q -26 10 -24 -22z"/>
+  <path d="M 1260 590 q 16 -20 30 -4 q 12 14 -8 24 q -24 9 -22 -20z"/>
+  <path d="M 250 700 q 14 -18 28 -4 q 10 14 -7 22 q -22 8 -21 -18z"/>
+</g>
+
+<rect x="60" y="42" width="250" height="32" rx="16.0" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="2.5"/><text x="185.0" y="62.55" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="13" font-weight="700" fill="#1E1B2E" text-anchor="middle" opacity="1">EPISODE 01 / ROUTE</text>
+<text x="60" y="120" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="46" font-weight="700" fill="#1E1B2E" text-anchor="start" opacity="1">播放路由：两条后端，只有一个在响。</text>
+<text x="60" y="164" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="22" font-weight="400" fill="#786F82" text-anchor="start" opacity="1">先证明解码器真的在包里，再决定这一帧交给谁。</text>
+<g transform="rotate(-5 1440 95)">
+<rect x="1300" y="55" width="270" height="78" rx="14" fill="#FFFDF7" stroke="#FF6B9A" stroke-width="4" opacity="1"/>
+<text x="1435" y="86" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="22" font-weight="700" fill="#FF6B9A" text-anchor="middle" opacity="1" letter-spacing="2">NO FAKE</text>
+<text x="1435" y="112" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="22" font-weight="700" fill="#FF6B9A" text-anchor="middle" opacity="1" letter-spacing="2">HWACCEL</text>
+</g>
+<rect x="69" y="214" width="390" height="300" rx="18" fill="#1E1B2E" opacity=".10"/><rect x="60" y="205" width="390" height="300" rx="18" fill="#FFFFFF" stroke="#1E1B2E" stroke-width="4" opacity="1"/>
+<path d="M 60 223 Q 60 205 78 205 L 432 205 Q 450 205 450 223 L 450 250 L 60 250 Z" fill="#F7C948" opacity=".55"/>
+<text x="85" y="243" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="27" font-weight="700" fill="#1E1B2E" text-anchor="start" opacity="1">构建门禁</text>
+<text x="85" y="268" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="11" font-weight="400" fill="#786F82" text-anchor="start" opacity="1" letter-spacing="0.8">BUILD GATE / 一次构建只认一套身份</text>
+<text x="85" y="308" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="18" font-weight="400" fill="#1E1B2E" text-anchor="start" opacity="1">① AV1 VideoToolbox 注册</text>
+<text x="85" y="342" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="18" font-weight="400" fill="#1E1B2E" text-anchor="start" opacity="1">② Mach-O UUID / 359 导出符号</text>
+<text x="85" y="376" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="18" font-weight="400" fill="#1E1B2E" text-anchor="start" opacity="1">③ ABI 61.3.100 + 依赖库</text>
+<text x="85" y="410" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="18" font-weight="400" fill="#1E1B2E" text-anchor="start" opacity="1">④ 设备 &amp; 模拟器 slice</text>
+<text x="85" y="470" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="18" font-weight="700" fill="#D6285A" text-anchor="start" opacity="1">任何一项漂移 → 构建失败</text>
+<text x="85" y="493" font-family="Menlo, monospace" font-size="13" font-weight="400" fill="#786F82" text-anchor="start" opacity="1">tool/ios_av1_package.sh</text>
+<path d="M 450 355 L 498 355" fill="none" stroke="#1E1B2E" stroke-width="3" marker-end="url(#arrow)"/>
+<text x="474" y="342" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="13" font-weight="400" fill="#786F82" text-anchor="middle" opacity="1">通过</text>
+<rect x="509" y="244" width="330" height="220" rx="18" fill="#1E1B2E" opacity=".10"/><rect x="500" y="235" width="330" height="220" rx="18" fill="#FFFDF7" stroke="#1E1B2E" stroke-width="4" opacity="1"/>
+<text x="525" y="275" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="27" font-weight="700" fill="#1E1B2E" text-anchor="start" opacity="1">选流器</text>
+<text x="525" y="300" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="11" font-weight="400" fill="#786F82" text-anchor="start" opacity="1" letter-spacing="1">STREAM SELECTOR</text>
+<text x="525" y="338" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="18" font-weight="400" fill="#1E1B2E" text-anchor="start" opacity="1">优先可硬解 AV1 变体；</text>
+<text x="525" y="367" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="18" font-weight="400" fill="#1E1B2E" text-anchor="start" opacity="1">同时尊重用户编码偏好。</text>
+<text x="525" y="407" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="16" font-weight="700" fill="#D6285A" text-anchor="start" opacity="1">选错流 = 硬件白买了</text>
+<text x="525" y="432" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="13" font-weight="400" fill="#786F82" text-anchor="start" opacity="1">PlaybackRoute 统一收口</text>
+<path d="M 665 445 L 665 489" fill="none" stroke="#1E1B2E" stroke-width="3"/>
+<path d="M 330 489 L 1090 489" fill="none" stroke="#1E1B2E" stroke-width="3"/>
+<path d="M 330 489 L 330 535" fill="none" stroke="#1E1B2E" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M 1090 489 L 1090 535" fill="none" stroke="#1E1B2E" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="578" y="474" width="174" height="30" rx="15.0" fill="#FFFFFF" stroke="#1E1B2E" stroke-width="2.5"/><text x="665.0" y="493.9" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="14" font-weight="700" fill="#1E1B2E" text-anchor="middle" opacity="1">唯一活跃后端</text>
+<rect x="99" y="554" width="660" height="278" rx="18" fill="#1E1B2E" opacity=".10"/><rect x="90" y="545" width="660" height="278" rx="18" fill="#F7FEFC" stroke="#1E1B2E" stroke-width="4" opacity="1"/>
+<path d="M 90 563 Q 90 545 108 545 L 732 545 Q 750 545 750 563 L 750 584 L 90 584 Z" fill="#62D2E8" opacity=".55"/>
+<text x="115" y="575" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="24" font-weight="700" fill="#1E1B2E" text-anchor="start" opacity="1">mpv + FFmpeg + VideoToolbox</text>
+<rect x="115" y="596" width="120" height="26" rx="13.0" fill="#62D2E8" stroke="#1E1B2E" stroke-width="2.5"/><text x="175.0" y="613.55" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="13" font-weight="700" fill="#1E1B2E" text-anchor="middle" opacity="1">8-bit SDR</text>
+<text x="115" y="652" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="17" font-weight="400" fill="#1E1B2E" text-anchor="start" opacity="1">弹幕 / 字幕 / 倍速 / 超分 / 截动图</text>
+<text x="115" y="680" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="17" font-weight="400" fill="#1E1B2E" text-anchor="start" opacity="1">每帧回报 hwdec-current=videotoolbox</text>
+<text x="115" y="708" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="17" font-weight="400" fill="#1E1B2E" text-anchor="start" opacity="1">帧格式 CVPixelBuffer；日志 videotoolbox[nv12]</text>
+<text x="115" y="742" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#786F82" text-anchor="start" opacity="1">能力缺口：切音轨 / 动态截图 / 播放器音量 / AirPlay 视频</text>
+<text x="115" y="768" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="700" fill="#D6285A" text-anchor="start" opacity="1">→ PlaybackCapabilities 返回中文原因，不静默失败</text>
+<rect x="859" y="554" width="660" height="278" rx="18" fill="#1E1B2E" opacity=".10"/><rect x="850" y="545" width="660" height="278" rx="18" fill="#FBF9FF" stroke="#1E1B2E" stroke-width="4" opacity="1"/>
+<path d="M 850 563 Q 850 545 868 545 L 1492 545 Q 1510 545 1510 563 L 1510 584 L 850 584 Z" fill="#B9A7FF" opacity=".55"/>
+<text x="875" y="575" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="24" font-weight="700" fill="#1E1B2E" text-anchor="start" opacity="1">AVPlayerLayer</text>
+<rect x="875" y="596" width="250" height="26" rx="13.0" fill="#B9A7FF" stroke="#1E1B2E" stroke-width="2.5"/><text x="1000.0" y="613.2" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="12" font-weight="700" fill="#1E1B2E" text-anchor="middle" opacity="1">HDR10 · HLG · DV · AV1 10-bit</text>
+<text x="875" y="652" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="17" font-weight="400" fill="#1E1B2E" text-anchor="start" opacity="1">EDR 直通，不把 HDR 压成 SDR 再假装。</text>
+<text x="875" y="680" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="17" font-weight="400" fill="#1E1B2E" text-anchor="start" opacity="1">系统还原 RPU；同一会话只保留一个后端。</text>
+<text x="875" y="708" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="17" font-weight="400" fill="#1E1B2E" text-anchor="start" opacity="1">切源先 dispose 旧后端，再建立新会话。</text>
+<text x="875" y="742" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="400" fill="#786F82" text-anchor="start" opacity="1">AV1 10-bit 画面正确、无绿屏；硬解状态记 unavailable，不伪造。</text>
+<text x="875" y="768" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="15" font-weight="700" fill="#D6285A" text-anchor="start" opacity="1">HLG / 杜比视界：路由已接，片源未实测。</text>
+<rect x="99" y="869" width="1420" height="96" rx="18" fill="#1E1B2E" opacity=".10"/><rect x="90" y="860" width="1420" height="96" rx="18" fill="#9FE3C2" stroke="#1E1B2E" stroke-width="4" opacity="1"/>
+<text x="115" y="892" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="18" font-weight="700" fill="#1E1B2E" text-anchor="start" opacity="1">同一份 snapshot：位置 / 时长 / 播放状态；旋转、全屏、控制条显隐不产生新媒体代次。</text>
+<text x="115" y="924" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="17" font-weight="400" fill="#2F5D4A" text-anchor="start" opacity="1">输出按屏幕物理像素：iPhone Air 全宽 16:9 稳定在 1260×709 量级；120 ms 防抖 + 串行化原生命令。</text>
+<text x="60" y="1018" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="13" font-weight="700" fill="#786F82" text-anchor="start" opacity="1">BILIBILI+ / PLAYBACK ROUTE</text>
+<text x="1540" y="1018" font-family="Hiragino Sans GB, PingFang SC, Noto Sans CJK SC, Arial, sans-serif" font-size="13" font-weight="400" fill="#786F82" text-anchor="end" opacity="1">两条后端 · 一条时间线</text>
+</svg>

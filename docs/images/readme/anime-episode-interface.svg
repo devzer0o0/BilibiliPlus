@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="240" viewBox="0 0 1600 240" role="img" aria-labelledby="t d">
+<title id="t">界面篇 section banner</title><desc id="d">Anime-style episode banner for 界面篇.</desc><defs>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#FFE89A"/><stop offset=".45" stop-color="#F7C948"/><stop offset="1" stop-color="#E9A62C"/>
+  </linearGradient>
+  <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity=".9"/><stop offset=".5" stop-color="#BFEFFF" stop-opacity=".55"/><stop offset="1" stop-color="#B9A7FF" stop-opacity=".45"/>
+  </linearGradient>
+  <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
+    <circle cx="3" cy="3" r="1.5" fill="#1E1B2E" opacity=".16"/>
+  </pattern>
+  <path id="petal" d="M0 0 C20 -18 38 -2 23 20 C10 38 -8 27 -12 13 C-14 5 -6 3 0 0Z"/>
+  <path id="spark" d="M0 -20 C2.4 -7 7 -2.4 20 0 C7 2.4 2.4 7 0 20 C-2.4 7 -7 2.4 -20 0 C-7 -2.4 -2.4 -7 0 -20Z"/>
+</defs>
+<rect width="1600" height="240" fill="#FFF8EE"/>
+<rect width="1600" height="240" fill="url(#dots)" opacity=".45"/>
+<path d="M0 202 H1600" stroke="#1E1B2E" stroke-width="4"/>
+<path d="M0 202 H1600" stroke="#62D2E8" stroke-width="10" opacity=".7"/>
+<text x="66" y="184" font-family="Arial Black, Hiragino Sans GB, sans-serif" font-size="150" font-weight="900" fill="none" stroke="#62D2E8" stroke-width="4" opacity=".7">02</text>
+<text x="300" y="60" font-family="Hiragino Sans GB, Arial, sans-serif" font-size="16" font-weight="700" fill="#1E1B2E" opacity=".58" letter-spacing="4">EPISODE 02 / INTERFACE</text>
+<text x="298" y="132" font-family="Hiragino Sans GB, Arial Black, sans-serif" font-size="58" font-weight="900" fill="#1E1B2E">界面篇</text>
+<text x="300" y="170" font-family="Hiragino Sans GB, Arial, sans-serif" font-size="19" fill="#1E1B2E" opacity=".7">液态玻璃、金色小电视，还有一点魔法。</text>
+<rect x="1350" y="42" width="118" height="154" rx="24" fill="url(#glass)" stroke="#1E1B2E" stroke-width="5"/><rect x="1372" y="68" width="74" height="82" rx="14" fill="#FFFFFF" opacity=".55" stroke="#1E1B2E" stroke-width="3"/><circle cx="1409" cy="169" r="8" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="3"/><use xlink:href="#spark" transform="translate(1320 48) scale(.5)" fill="#1E1B2E"/><use xlink:href="#spark" transform="translate(1514 188) scale(.4)" fill="#62D2E8"/>
+<use xlink:href="#petal" transform="translate(1250 186) rotate(22) scale(.55)" fill="#62D2E8"/>
+</svg>

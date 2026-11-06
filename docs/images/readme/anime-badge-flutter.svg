@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="320" height="76" viewBox="0 0 320 76" role="img" aria-labelledby="t d">
+<title id="t">FLUTTER 3.47.9</title><desc id="d">Local badge: FLUTTER 3.47.9</desc>
+<rect x="4" y="7" width="312" height="64" rx="32" fill="#1E1B2E" opacity=".14"/>
+<rect x="0" y="0" width="312" height="64" rx="32" fill="#FFF8EE" stroke="#1E1B2E" stroke-width="3"/>
+<circle cx="32" cy="32" r="21" fill="#62D2E8" stroke="#1E1B2E" stroke-width="3"/>
+<path d="M31 16 L45 31 L31 49 L17 31Z" fill="#FFFFFF" stroke="#1E1B2E" stroke-width="3"/><path d="M17 31 H45 M31 16 V49" stroke="#1E1B2E" stroke-width="2"/>
+<text x="64" y="40" font-family="Hiragino Sans GB, Arial, sans-serif" font-size="21" font-weight="800" fill="#1E1B2E" letter-spacing="1">FLUTTER 3.47.9</text>
+</svg>

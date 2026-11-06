@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="760" viewBox="0 0 1600 760" role="img" aria-labelledby="t d">
+<title id="t">Bilibili+ anime hero</title><desc id="d">An original anime-style banner: a gold TV mascot, sakura, speed lines, and the title Bilibili+.</desc><defs>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#FFE89A"/><stop offset=".45" stop-color="#F7C948"/><stop offset="1" stop-color="#E9A62C"/>
+  </linearGradient>
+  <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity=".9"/><stop offset=".5" stop-color="#BFEFFF" stop-opacity=".55"/><stop offset="1" stop-color="#B9A7FF" stop-opacity=".45"/>
+  </linearGradient>
+  <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
+    <circle cx="3" cy="3" r="1.5" fill="#1E1B2E" opacity=".16"/>
+  </pattern>
+  <path id="petal" d="M0 0 C20 -18 38 -2 23 20 C10 38 -8 27 -12 13 C-14 5 -6 3 0 0Z"/>
+  <path id="spark" d="M0 -20 C2.4 -7 7 -2.4 20 0 C7 2.4 2.4 7 0 20 C-2.4 7 -7 2.4 -20 0 C-7 -2.4 -2.4 -7 0 -20Z"/>
+</defs>
+<defs>
+  <clipPath id="heroClip"><rect width="1600" height="760" rx="36"/></clipPath>
+</defs>
+<g clip-path="url(#heroClip)">
+  <rect width="1600" height="760" fill="#FFF8EE"/>
+  <rect width="1600" height="760" fill="url(#dots)" opacity=".55"/>
+  <circle cx="1285" cy="345" r="306" fill="#FFD9E6"/>
+  <circle cx="1500" cy="660" r="230" fill="#CFF4FA" opacity=".92"/>
+  <path d="M880 760 C970 600 1110 500 1260 455 C1170 610 1080 715 1000 760Z" fill="#FFE7A8" opacity=".9"/>
+  <path d="M-140 690 L420 -120 L570 -120 L-10 760Z" fill="#FF6B9A" opacity=".10"/>
+  <path d="M80 780 L620 -60 L700 -60 L160 780Z" fill="#62D2E8" opacity=".10"/>
+  <g stroke="#1E1B2E" stroke-width="2.5" opacity=".14">
+    <path d="M1030 40 L1210 260"/><path d="M1080 30 L1260 250"/><path d="M1130 22 L1310 242"/>
+    <path d="M1180 16 L1360 236"/><path d="M1230 10 L1410 230"/><path d="M1280 4 L1460 224"/>
+    <path d="M1330 -2 L1510 218"/><path d="M1380 -8 L1560 212"/>
+  </g>
+  <g opacity=".9">
+    <use xlink:href="#petal" transform="translate(1030 165) rotate(18) scale(1.05)" fill="#FF6B9A"/>
+    <use xlink:href="#petal" transform="translate(1540 190) rotate(-22) scale(.85)" fill="#FF9FBC"/>
+    <use xlink:href="#petal" transform="translate(940 400) rotate(48) scale(.75)" fill="#FF6B9A" opacity=".8"/>
+    <use xlink:href="#petal" transform="translate(1500 455) rotate(15) scale(1.2)" fill="#FFB3C7" opacity=".9"/>
+    <use xlink:href="#petal" transform="translate(1130 690) rotate(-30) scale(.65)" fill="#FF8A5C" opacity=".8"/>
+  </g>
+  <g fill="#1E1B2E" opacity=".65">
+    <use xlink:href="#spark" transform="translate(1000 95) scale(.55)"/>
+    <use xlink:href="#spark" transform="translate(1548 320) scale(.45)"/>
+    <use xlink:href="#spark" transform="translate(1090 520) scale(.35)"/>
+  </g>
+
+  <rect x="70" y="58" width="318" height="38" rx="19" fill="#FFFFFF" stroke="#1E1B2E" stroke-width="3"/>
+  <circle cx="91" cy="77" r="6" fill="#FF6B9A"/>
+  <text x="108" y="84" font-family="Hiragino Sans GB, Arial, sans-serif" font-size="15" font-weight="700" fill="#1E1B2E" letter-spacing="2">ORIGINAL iOS FORK · 2.5D</text>
+
+  <text x="70" y="258" font-family="Hiragino Sans GB, Arial Black, sans-serif" font-size="132" font-weight="900" fill="#FF6B9A" opacity=".32" letter-spacing="-7">BILIBILI+</text>
+  <text x="62" y="250" font-family="Hiragino Sans GB, Arial Black, sans-serif" font-size="132" font-weight="900" fill="#1E1B2E" letter-spacing="-7">BILIBILI<tspan fill="#FF6B9A">+</tspan></text>
+
+  <text x="72" y="330" font-family="Hiragino Sans GB, Arial, sans-serif" font-size="34" font-weight="700" fill="#1E1B2E">把 iPhone Air 的播放链路，修成一场热血番。</text>
+  <text x="74" y="372" font-family="Hiragino Sans GB, Arial, sans-serif" font-size="19" fill="#1E1B2E" opacity=".7">不是换皮：两条后端、一套路由，每一帧都给出证据。</text>
+
+  <g font-family="Hiragino Sans GB, Arial, sans-serif" font-size="20" font-weight="700">
+    <rect x="72" y="430" width="184" height="54" rx="27" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="3"/>
+    <text x="164" y="465" text-anchor="middle" fill="#FFFFFF">AV1 4K60</text>
+    <rect x="272" y="430" width="176" height="54" rx="27" fill="#62D2E8" stroke="#1E1B2E" stroke-width="3"/>
+    <text x="360" y="465" text-anchor="middle" fill="#1E1B2E">液态玻璃</text>
+    <rect x="464" y="430" width="166" height="54" rx="27" fill="#B9A7FF" stroke="#1E1B2E" stroke-width="3"/>
+    <text x="547" y="465" text-anchor="middle" fill="#1E1B2E">AI 精选</text>
+    <rect x="646" y="430" width="166" height="54" rx="27" fill="#F7C948" stroke="#1E1B2E" stroke-width="3"/>
+    <text x="729" y="465" text-anchor="middle" fill="#1E1B2E">S3 备份</text>
+  </g>
+
+  <text x="74" y="700" font-family="Hiragino Sans GB, Arial, sans-serif" font-size="17" fill="#1E1B2E" opacity=".58" letter-spacing="1">iOS 15+ · FLUTTER 3.47.9 · GPL-3.0 · v0.0.6+7</text>
+
+  <!-- mascot speech -->
+  <g font-family="Hiragino Sans GB, Arial, sans-serif">
+    <path d="M1150 108 H1510 A26 26 0 0 1 1536 134 V196 A26 26 0 0 1 1510 222 H1230 L1198 250 L1206 222 H1150 A26 26 0 0 1 1124 196 V134 A26 26 0 0 1 1150 108Z" fill="#FFFFFF" stroke="#1E1B2E" stroke-width="4"/>
+    <text x="1330" y="154" text-anchor="middle" font-size="29" font-weight="900" fill="#1E1B2E">4K60，开播！</text>
+    <text x="1330" y="188" text-anchor="middle" font-size="16" fill="#1E1B2E" opacity=".65">每一帧都要有证据。</text>
+  </g>
+
+  <!-- chibi TV mascot -->
+  <g transform="translate(1236 252)">
+    <g stroke="#1E1B2E" stroke-width="9" stroke-linecap="round">
+      <path d="M70 14 L38 -48"/><path d="M180 14 L212 -48"/>
+    </g>
+    <circle cx="38" cy="-48" r="10" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="4"/>
+    <circle cx="212" cy="-48" r="10" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="4"/>
+    <use xlink:href="#spark" transform="translate(125 -76) scale(.65)" fill="#FF6B9A"/>
+
+    <rect x="0" y="0" width="250" height="190" rx="42" fill="url(#gold)" stroke="#1E1B2E" stroke-width="8"/>
+    <rect x="22" y="22" width="206" height="130" rx="24" fill="#2A2340" stroke="#1E1B2E" stroke-width="4"/>
+    <circle cx="80" cy="86" r="30" fill="#FFFFFF"/><circle cx="170" cy="86" r="30" fill="#FFFFFF"/>
+    <circle cx="84" cy="88" r="15" fill="#241E36"/><circle cx="174" cy="88" r="15" fill="#241E36"/>
+    <circle cx="79" cy="82" r="5" fill="#FFFFFF"/><circle cx="169" cy="82" r="5" fill="#FFFFFF"/>
+    <circle cx="90" cy="95" r="2.5" fill="#FFFFFF"/><circle cx="180" cy="95" r="2.5" fill="#FFFFFF"/>
+    <ellipse cx="51" cy="126" rx="19" ry="8" fill="#FF9FB4" opacity=".9"/>
+    <ellipse cx="199" cy="126" rx="19" ry="8" fill="#FF9FB4" opacity=".9"/>
+    <path d="M108 122 Q125 139 142 122" fill="none" stroke="#FFB3C7" stroke-width="5" stroke-linecap="round"/>
+
+    <path d="M65 188 L185 188 L200 300 L50 300Z" fill="#FFFFFF" stroke="#1E1B2E" stroke-width="6"/>
+    <path d="M65 188 L95 230 L125 206 L155 230 L185 188" fill="none" stroke="#1E1B2E" stroke-width="5"/>
+    <path d="M50 300 L200 300 L218 372 L32 372Z" fill="#2A2340" stroke="#1E1B2E" stroke-width="6"/>
+    <path d="M82 304 L70 368 M118 304 L112 368 M158 304 L168 368" stroke="#62D2E8" stroke-width="4" opacity=".7"/>
+    <rect x="90" y="372" width="24" height="58" rx="12" fill="#FFE0D0" stroke="#1E1B2E" stroke-width="5"/>
+    <rect x="138" y="372" width="24" height="58" rx="12" fill="#FFE0D0" stroke="#1E1B2E" stroke-width="5"/>
+    <ellipse cx="100" cy="434" rx="24" ry="12" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="4"/>
+    <ellipse cx="152" cy="434" rx="24" ry="12" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="4"/>
+
+    <path d="M64 214 Q30 238 34 276" fill="none" stroke="#1E1B2E" stroke-width="16" stroke-linecap="round"/>
+    <path d="M186 214 Q220 238 216 276" fill="none" stroke="#1E1B2E" stroke-width="16" stroke-linecap="round"/>
+    <circle cx="34" cy="278" r="12" fill="#FFE0D0" stroke="#1E1B2E" stroke-width="5"/>
+    <circle cx="216" cy="278" r="12" fill="#FFE0D0" stroke="#1E1B2E" stroke-width="5"/>
+
+    <circle cx="125" cy="218" r="18" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="4"/>
+    <path d="M117 218 L136 208 L136 228Z" fill="#FFFFFF"/>
+    <path d="M50 212 Q125 248 200 212" fill="none" stroke="#62D2E8" stroke-width="5"/>
+  </g>
+
+  <g opacity=".8">
+    <use xlink:href="#petal" transform="translate(1170 660) rotate(20) scale(.9)" fill="#FF6B9A"/>
+    <use xlink:href="#petal" transform="translate(1550 590) rotate(-24) scale(.7)" fill="#FF8A5C"/>
+  </g>
+  <text x="1530" y="716" text-anchor="end" font-family="Hiragino Sans GB, Arial, sans-serif" font-size="15" fill="#1E1B2E" opacity=".55">CHARACTER: 小电视娘 / ORIGINAL</text>
+</g>
+</svg>

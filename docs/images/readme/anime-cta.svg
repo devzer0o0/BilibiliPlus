@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="420" viewBox="0 0 1600 420" role="img" aria-labelledby="t d">
+<title id="t">Bilibili+ call to action</title><desc id="d">An anime-style closing card asking for a star and linking to releases through surrounding README links.</desc><defs>
+  <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#FFE89A"/><stop offset=".45" stop-color="#F7C948"/><stop offset="1" stop-color="#E9A62C"/>
+  </linearGradient>
+  <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#FFFFFF" stop-opacity=".9"/><stop offset=".5" stop-color="#BFEFFF" stop-opacity=".55"/><stop offset="1" stop-color="#B9A7FF" stop-opacity=".45"/>
+  </linearGradient>
+  <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
+    <circle cx="3" cy="3" r="1.5" fill="#1E1B2E" opacity=".16"/>
+  </pattern>
+  <path id="petal" d="M0 0 C20 -18 38 -2 23 20 C10 38 -8 27 -12 13 C-14 5 -6 3 0 0Z"/>
+  <path id="spark" d="M0 -20 C2.4 -7 7 -2.4 20 0 C7 2.4 2.4 7 0 20 C-2.4 7 -7 2.4 -20 0 C-7 -2.4 -2.4 -7 0 -20Z"/>
+</defs>
+<defs><clipPath id="ctaClip"><rect width="1600" height="420" rx="32"/></clipPath></defs>
+<g clip-path="url(#ctaClip)">
+  <rect width="1600" height="420" fill="#FFF8EE"/>
+  <rect width="1600" height="420" fill="url(#dots)" opacity=".45"/>
+  <circle cx="1420" cy="150" r="240" fill="#FFD9E6"/>
+  <path d="M0 380 C280 280 420 330 600 420 H0Z" fill="#62D2E8" opacity=".18"/>
+  <g stroke="#1E1B2E" stroke-width="2" opacity=".13">
+    <path d="M900 10 L1120 230"/><path d="M950 0 L1170 220"/><path d="M1000 -10 L1220 210"/>
+  </g>
+  <text x="90" y="116" font-family="Hiragino Sans GB, Arial, sans-serif" font-size="16" font-weight="700" fill="#1E1B2E" opacity=".55" letter-spacing="4">FIN / NEXT EPISODE</text>
+  <text x="88" y="198" font-family="Hiragino Sans GB, Arial Black, sans-serif" font-size="62" font-weight="900" fill="#1E1B2E">这集好看的话，</text>
+  <text x="88" y="274" font-family="Hiragino Sans GB, Arial Black, sans-serif" font-size="62" font-weight="900" fill="#FF6B9A">点个 Star 追番吧。</text>
+  <text x="92" y="322" font-family="Hiragino Sans GB, Arial, sans-serif" font-size="20" fill="#1E1B2E" opacity=".68">把 iPhone Air 的播放体验，继续修成下一话。</text>
+  <rect x="90" y="350" width="282" height="52" rx="26" fill="#1E1B2E"/>
+  <text x="231" y="384" text-anchor="middle" font-family="Hiragino Sans GB, Arial, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">★ Star on GitHub</text>
+  <rect x="390" y="350" width="300" height="52" rx="26" fill="#FFFFFF" stroke="#1E1B2E" stroke-width="3"/>
+  <text x="540" y="384" text-anchor="middle" font-family="Hiragino Sans GB, Arial, sans-serif" font-size="18" font-weight="700" fill="#1E1B2E">↓ Download Release</text>
+
+  <g transform="translate(1190 62) scale(.9)">
+    <g stroke="#1E1B2E" stroke-width="7" stroke-linecap="round"><path d="M55 10 L30 -38"/><path d="M145 10 L170 -38"/></g>
+    <circle cx="30" cy="-38" r="8" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="3"/>
+    <circle cx="170" cy="-38" r="8" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="3"/>
+    <rect x="0" y="0" width="200" height="152" rx="34" fill="url(#gold)" stroke="#1E1B2E" stroke-width="7"/>
+    <rect x="18" y="18" width="164" height="104" rx="20" fill="#2A2340" stroke="#1E1B2E" stroke-width="4"/>
+    <circle cx="64" cy="69" r="24" fill="#FFFFFF"/><circle cx="136" cy="69" r="24" fill="#FFFFFF"/>
+    <circle cx="68" cy="71" r="12" fill="#241E36"/><circle cx="140" cy="71" r="12" fill="#241E36"/>
+    <circle cx="63" cy="66" r="4" fill="#FFFFFF"/><circle cx="135" cy="66" r="4" fill="#FFFFFF"/>
+    <ellipse cx="41" cy="101" rx="15" ry="6" fill="#FF9FB4"/><ellipse cx="159" cy="101" rx="15" ry="6" fill="#FF9FB4"/>
+    <path d="M86 99 Q100 113 114 99" fill="none" stroke="#FFB3C7" stroke-width="4" stroke-linecap="round"/>
+    <path d="M52 150 L148 150 L160 226 L40 226Z" fill="#FFFFFF" stroke="#1E1B2E" stroke-width="5"/>
+    <path d="M40 226 L160 226 L174 280 L26 280Z" fill="#2A2340" stroke="#1E1B2E" stroke-width="5"/>
+    <rect x="66" y="280" width="20" height="44" rx="10" fill="#FFE0D0" stroke="#1E1B2E" stroke-width="4"/>
+    <rect x="114" y="280" width="20" height="44" rx="10" fill="#FFE0D0" stroke="#1E1B2E" stroke-width="4"/>
+    <ellipse cx="76" cy="328" rx="20" ry="10" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="4"/>
+    <ellipse cx="124" cy="328" rx="20" ry="10" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="4"/>
+    <path d="M51 168 Q22 190 26 220" fill="none" stroke="#1E1B2E" stroke-width="13" stroke-linecap="round"/>
+    <path d="M149 168 Q178 190 174 220" fill="none" stroke="#1E1B2E" stroke-width="13" stroke-linecap="round"/>
+    <circle cx="26" cy="222" r="10" fill="#FFE0D0" stroke="#1E1B2E" stroke-width="4"/>
+    <circle cx="174" cy="222" r="10" fill="#FFE0D0" stroke="#1E1B2E" stroke-width="4"/>
+    <circle cx="100" cy="170" r="14" fill="#FF6B9A" stroke="#1E1B2E" stroke-width="3"/>
+    <path d="M94 170 L108 163 L108 177Z" fill="#FFFFFF"/>
+  </g>
+  <use xlink:href="#spark" transform="translate(1120 80) scale(.6)" fill="#FF6B9A"/>
+  <use xlink:href="#spark" transform="translate(1510 300) scale(.5)" fill="#62D2E8"/>
+  <use xlink:href="#petal" transform="translate(1050 330) rotate(-20) scale(.7)" fill="#FF6B9A"/>
+</g>
+</svg>
