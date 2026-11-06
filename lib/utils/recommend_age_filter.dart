@@ -15,7 +15,13 @@ enum RecommendAgeFilter {
   month(30, '最近 1 个月'),
   quarter(90, '最近 3 个月'),
   halfYear(180, '最近半年'),
-  year(365, '最近 1 年');
+  year(365, '最近 1 年'),
+
+  /// A cutoff the user picks directly instead of a fixed window. It carries no
+  /// day count: the date is stored beside the filter (passed to
+  /// [RecommendAgeWindow.of] as `customAfter`). A missing date leaves the feed
+  /// unfiltered rather than hiding everything.
+  custom(null, '自定义时间');
 
   const RecommendAgeFilter(this.days, this.label);
 
@@ -26,13 +32,23 @@ enum RecommendAgeFilter {
   /// without one.
   final String label;
 
-  bool get isEnabled => days != null;
+  /// Whether this rung filters anything at all. [custom] counts as enabled even
+  /// before a date is stored, so the settings row can offer to pick one.
+  bool get isEnabled => this != all;
+
+  bool get isCustom => this == custom;
 
   /// Persisted form. Storing the day count keeps the meaning stable when the
-  /// rung list changes; 0 means "no filter".
-  int get storedValue => days ?? 0;
+  /// rung list changes; 0 means "no filter" and [customStoredValue] means the
+  /// cutoff comes from the stored date. A build that predates [custom] reads
+  /// the sentinel as "no filter", which is the safe direction.
+  int get storedValue => isCustom ? customStoredValue : (days ?? 0);
+
+  /// Marker for [custom]; distinct from 0 and from every positive day count.
+  static const int customStoredValue = -2;
 
   static RecommendAgeFilter fromStored(int? stored) {
+    if (stored == customStoredValue) return custom;
     if (stored == null || stored <= 0) return all;
     for (final filter in values) {
       if (filter.days == stored) return filter;
@@ -57,7 +73,20 @@ class RecommendAgeWindow {
 
   bool get isActive => afterSeconds != null;
 
-  factory RecommendAgeWindow.of(RecommendAgeFilter filter, {DateTime? now}) {
+  ///
+  /// [customAfter] is the cutoff for [RecommendAgeFilter.custom] and is ignored
+  /// by the fixed rungs. A custom filter without a date yields an inactive
+  /// window: showing more is recoverable, hiding the feed is not.
+  factory RecommendAgeWindow.of(
+    RecommendAgeFilter filter, {
+    DateTime? now,
+    DateTime? customAfter,
+  }) {
+    if (filter.isCustom) {
+      final after = customAfter;
+      if (after == null) return const RecommendAgeWindow._(null);
+      return RecommendAgeWindow._(after.millisecondsSinceEpoch ~/ 1000);
+    }
     final days = filter.days;
     if (days == null) return const RecommendAgeWindow._(null);
     final from = (now ?? DateTime.now()).subtract(Duration(days: days));

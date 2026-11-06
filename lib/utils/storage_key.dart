@@ -52,6 +52,9 @@ abstract final class SettingBoxKey {
       minDurationForRcmd = 'minDurationForRcmd',
       // Day count of the age window; 0 means the filter is off.
       rcmdAgeFilterDays = 'rcmdAgeFilterDays',
+      // Local midnight of the custom age cutoff, in Unix milliseconds; 0 when
+      // the custom rung has no date yet.
+      rcmdAgeFilterCustomAfter = 'rcmdAgeFilterCustomAfter',
       aiRecommendSettings = 'aiRecommendSettings',
       s3BackupSettings = 's3BackupSettings',
       minPlayForRcmd = 'minPlayForRcmd',

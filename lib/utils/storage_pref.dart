@@ -707,6 +707,12 @@ abstract final class Pref {
   static int get rcmdAgeFilterDays =>
       _setting.get(SettingBoxKey.rcmdAgeFilterDays, defaultValue: 0);
 
+  /// Unix milliseconds of the custom age cutoff; 0 means no date was picked.
+  static int get rcmdAgeFilterCustomAfter => _setting.get(
+    SettingBoxKey.rcmdAgeFilterCustomAfter,
+    defaultValue: 0,
+  );
+
   static int get minPlayForRcmd =>
       _setting.get(SettingBoxKey.minPlayForRcmd, defaultValue: 0);
 

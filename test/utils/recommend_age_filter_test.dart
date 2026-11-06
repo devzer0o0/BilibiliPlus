@@ -92,6 +92,92 @@ void main() {
     });
   });
 
+  group('a custom cutoff is the date the user picked', () {
+    final cutoff = DateTime.utc(2025, 6, 1);
+
+    RecommendAgeWindow customWindow(DateTime? after) => RecommendAgeWindow.of(
+      RecommendAgeFilter.custom,
+      now: now,
+      customAfter: after,
+    );
+
+    test('the custom rung counts as enabled', () {
+      expect(RecommendAgeFilter.custom.isEnabled, isTrue);
+      expect(RecommendAgeFilter.all.isEnabled, isFalse);
+    });
+
+    test('a video after the picked date is allowed', () {
+      expect(
+        customWindow(cutoff).allows(at(cutoff.add(const Duration(days: 1)))),
+        isTrue,
+      );
+    });
+
+    test('a video before the picked date is refused', () {
+      expect(
+        customWindow(
+          cutoff,
+        ).allows(at(cutoff.subtract(const Duration(seconds: 1)))),
+        isFalse,
+      );
+    });
+
+    test('the picked day itself is kept', () {
+      expect(customWindow(cutoff).allows(at(cutoff)), isTrue);
+    });
+
+    test('the cutoff does not move with the clock', () {
+      // Unlike the fixed rungs, "after 2025-06-01" means that date forever.
+      final early = RecommendAgeWindow.of(
+        RecommendAgeFilter.custom,
+        now: DateTime.utc(2026, 1, 1),
+        customAfter: cutoff,
+      );
+      final late = RecommendAgeWindow.of(
+        RecommendAgeFilter.custom,
+        now: DateTime.utc(2030, 1, 1),
+        customAfter: cutoff,
+      );
+      expect(early.afterSeconds, at(cutoff));
+      expect(late.afterSeconds, early.afterSeconds);
+    });
+
+    test('custom without a date hides nothing', () {
+      final window = customWindow(null);
+      expect(window.isActive, isFalse);
+      expect(
+        window.allows(at(now.subtract(const Duration(days: 9999)))),
+        isTrue,
+      );
+    });
+  });
+
+  group('the custom rung round-trips through storage', () {
+    test('the marker is persisted and read back', () {
+      expect(RecommendAgeFilter.custom.storedValue, isNegative);
+      expect(
+        RecommendAgeFilter.fromStored(RecommendAgeFilter.custom.storedValue),
+        RecommendAgeFilter.custom,
+      );
+    });
+
+    test('the marker cannot collide with a day count', () {
+      for (final filter in RecommendAgeFilter.values) {
+        if (filter == RecommendAgeFilter.custom) continue;
+        expect(
+          filter.storedValue,
+          isNot(RecommendAgeFilter.custom.storedValue),
+        );
+      }
+    });
+
+    test('negative values this build does not know still mean no filter', () {
+      // A stray sentinel must not be read as "a rung of N days".
+      expect(RecommendAgeFilter.fromStored(-1), RecommendAgeFilter.all);
+      expect(RecommendAgeFilter.fromStored(-3), RecommendAgeFilter.all);
+    });
+  });
+
   group('the rung list is extensible', () {
     test('at least 7 days and 1 month exist', () {
       expect(RecommendAgeFilter.values, contains(RecommendAgeFilter.week));

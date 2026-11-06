@@ -27,6 +27,37 @@ abstract final class RecommendFilter {
 
   static set ageFilter(RecommendAgeFilter value) => _ageFilter = value;
 
+  /// Cutoff for [RecommendAgeFilter.custom], or null when no date was picked.
+  ///
+  /// Null is also what a cold path sees before storage is open, so a custom
+  /// filter there hides nothing instead of hiding everything. Cached with an
+  /// explicit loaded flag because null is a meaningful cached value too.
+  static DateTime? _customAgeAfter;
+  static bool _customAgeAfterLoaded = false;
+
+  static DateTime? get customAgeAfter {
+    if (!_customAgeAfterLoaded) {
+      _customAgeAfterLoaded = true;
+      _customAgeAfter = _readStoredCustomAgeAfter();
+    }
+    return _customAgeAfter;
+  }
+
+  static set customAgeAfter(DateTime? value) {
+    _customAgeAfterLoaded = true;
+    _customAgeAfter = value;
+  }
+
+  static DateTime? _readStoredCustomAgeAfter() {
+    try {
+      final millis = Pref.rcmdAgeFilterCustomAfter;
+      if (millis <= 0) return null;
+      return DateTime.fromMillisecondsSinceEpoch(millis);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Reads the stored window, tolerating a store that is not open yet.
   ///
   /// This class is reached from the HTTP layer, and `GStorage.setting` is a late
@@ -46,8 +77,11 @@ abstract final class RecommendFilter {
   /// the window is deterministic.
   static DateTime? nowOverride;
 
-  static RecommendAgeWindow get ageWindow =>
-      RecommendAgeWindow.of(ageFilter, now: nowOverride);
+  static RecommendAgeWindow get ageWindow => RecommendAgeWindow.of(
+    ageFilter,
+    now: nowOverride,
+    customAfter: customAgeAfter,
+  );
 
   // (web/app)rcmd
   /// Re-reads the static mirrors after a restore or settings import.

@@ -2,6 +2,7 @@ import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/pages/rcmd/controller.dart';
 import 'package:PiliPlus/pages/setting/ai_recommend.dart';
 import 'package:PiliPlus/pages/setting/models/model.dart';
+import 'package:PiliPlus/utils/date_utils.dart';
 import 'package:PiliPlus/utils/recommend_age_filter.dart';
 import 'package:PiliPlus/utils/recommend_filter.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
@@ -112,13 +113,20 @@ List<SettingsModel> get recommendSettings => [
     filterScope: '推荐、热门、分区、相关视频',
   ),
   // Stored as a day count rather than an index, so adding a rung later does not
-  // silently change what an existing setting means.
+  // silently change what an existing setting means. The custom rung keeps its
+  // cutoff date under a separate key.
   NormalModel(
     title: '发布时间过滤',
     subtitle: '只显示所选时间范围内发布的推荐视频；不限则与之前行为一致',
     leading: const Icon(Icons.calendar_month_outlined),
     getSubtitle: () {
       final current = RecommendFilter.ageFilter;
+      if (current.isCustom) {
+        final after = RecommendFilter.customAgeAfter;
+        return after == null
+            ? '当前: 自定义时间（未选择日期，暂不过滤）'
+            : '当前: ${DateFormatUtils.longFormat.format(after)} 之后发布';
+      }
       return current.isEnabled
           ? '当前: ${current.label}（过滤早于该时间的视频）'
           : '当前: 不限（不过滤发布时间）';
@@ -133,24 +141,57 @@ List<SettingsModel> get recommendSettings => [
           value: RecommendFilter.ageFilter,
           values: [
             for (final filter in RecommendAgeFilter.values)
-              (filter, filter.label),
+              (filter, _ageFilterLabel(filter)),
           ],
         ),
       );
       if (result == null) return;
+      DateTime? customAfter;
+      if (result.isCustom) {
+        // The dialog awaits; the row may be gone by the time it closes.
+        if (!context.mounted) return;
+        final now = DateTime.now();
+        final earliest = DateTime(2009, 6, 26);
+        final existing = RecommendFilter.customAgeAfter;
+        final initialDate =
+            existing != null &&
+                !existing.isAfter(now) &&
+                !existing.isBefore(earliest)
+            ? existing
+            : now.subtract(const Duration(days: 30));
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: initialDate,
+          firstDate: earliest,
+          lastDate: now,
+        );
+        // Cancelling the picker keeps the previous setting: a filter that hides
+        // content must not switch itself on from a dismissed dialog.
+        if (picked == null) return;
+        customAfter = DateTime(picked.year, picked.month, picked.day);
+      }
       RecommendFilter.ageFilter = result;
       await GStorage.setting.put(
         SettingBoxKey.rcmdAgeFilterDays,
         result.storedValue,
       );
+      if (customAfter != null) {
+        // Remembered even when another rung is chosen later, so reopening the
+        // picker starts from the last custom date instead of a guess.
+        RecommendFilter.customAgeAfter = customAfter;
+        await GStorage.setting.put(
+          SettingBoxKey.rcmdAgeFilterCustomAfter,
+          customAfter.millisecondsSinceEpoch,
+        );
+      }
       setState();
       // The feed is fetched, not observed: without this the new window only
       // takes effect on the next manual refresh, which reads as "the setting
       // did nothing".
       try {
-        final controller = Get.find<RcmdController>();
-        controller.page = 0;
-        controller.isEnd = false;
+        final controller = Get.find<RcmdController>()
+          ..page = 0
+          ..isEnd = false;
         await controller.onRefresh();
       } catch (e) {
         if (kDebugMode) debugPrint('$e');
@@ -174,3 +215,13 @@ List<SettingsModel> get recommendSettings => [
     onChanged: (value) => RecommendFilter.applyFilterToRelatedVideos = value,
   ),
 ];
+
+/// Label for one age rung. The custom rung shows the picked date so the dialog
+/// answers "what does 自定义时间 currently mean" without opening a picker.
+String _ageFilterLabel(RecommendAgeFilter filter) {
+  if (!filter.isCustom) return filter.label;
+  final after = RecommendFilter.customAgeAfter;
+  return after == null
+      ? filter.label
+      : '${filter.label}（${DateFormatUtils.longFormat.format(after)} 之后）';
+}
