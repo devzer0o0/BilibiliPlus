@@ -105,6 +105,17 @@ tool/verify_release_constraints.sh build/ios/iphoneos/Runner.app
 
 <br/>
 
+## 图标与启动画面
+
+App 图标与启动画面不再是"老图换个色"，而是一次重新设计：主体是 B 站百万粉丝纪念奖牌中央的**金色小电视**（宽圆角矩形机身、双天线、内凹屏框、浮雕眼嘴），由可编辑的 3D SDF 渲染器生成，不依赖图像生成模型、不裁剪照片。
+
+- **设计母版**：`design/app_icon/master-2048.png`（2048²）为唯一定义源；1024 图标与透明小电视素材均由它派生，母版永不反向覆盖。
+- **可重复管线**：`tool/app_icon/render_icon.py` 渲染母版 → `tool/app_icon/build_assets.py` 派生全部工程资源（iOS AppIcon 全尺寸、启动图、logo、ICO、Android 前景），ICC 时间戳固定，同输入逐字节同输出。
+- **启动画面**：黑底 + 居中金色小电视。注意 iOS 会缓存启动 storyboard 快照——覆盖安装若仍见旧图，删除重装即可；详细机制见 [docs/app-icon-and-launch-screen.md](docs/app-icon-and-launch-screen.md)。
+- **真机验收**：iPhone Air 上 0.0.3 (4) 已验证（运行截图、快照重建记录、Assets.car 内容），证据与未测范围（如 Android 旧 splash 图保留）同样记录在该文档。
+
+<br/>
+
 ## 适配平台
 
 - [x] iPhone Air（主要目标，逐项实测）

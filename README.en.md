@@ -111,6 +111,17 @@ bundle. Any failure stops the build.
 
 <br/>
 
+## App icon and launch screen
+
+The app icon and launch screen are not "the old art with a recolor": the icon was redesigned around the **golden TV** at the center of Bilibili's 1M-follower commemorative medal (rounded-rect body, twin antennas, inset bezel, embossed face). It is produced by an editable 3D SDF renderer — no image-generation models, no photo crops.
+
+- **Design master**: `design/app_icon/master-2048.png` (2048²) is the single source of truth; the 1024 icon and the transparent TV artwork are derived from it, never the other way around.
+- **Reproducible pipeline**: `tool/app_icon/render_icon.py` renders the master → `tool/app_icon/build_assets.py` derives every shipped asset (all iOS AppIcon sizes, launch images, logos, ICO, Android foregrounds) with fixed ICC timestamps — identical input yields byte-identical output.
+- **Launch screen**: black background with the centered golden TV. iOS caches the launch-storyboard snapshot — if an overlay install still shows the old splash, delete and reinstall. Details: [docs/app-icon-and-launch-screen.md](docs/app-icon-and-launch-screen.md).
+- **Device acceptance**: verified on iPhone Air at 0.0.3 (4) (running screenshot, snapshot-rebuild record, Assets.car contents); evidence and open gaps (e.g. legacy Android splash PNGs kept as-is) are recorded in the same document.
+
+<br/>
+
 ## Platforms
 
 - [x] iPhone Air (primary target, measured item by item)
