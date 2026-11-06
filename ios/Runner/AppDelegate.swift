@@ -19,5 +19,8 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "HdrVideoPlugin") {
       HdrVideoPlugin.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "LiquidGlassNavigationPlugin") {
+      LiquidGlassNavigationPlugin.register(with: registrar)
+    }
   }
 }

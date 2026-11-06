@@ -24,6 +24,8 @@
 		C0A1B2C32FD0000100C0D3E2 /* HdrCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A1B2C42FD0000100C0D3E2 /* HdrCapability.swift */; };
 		C0A1B2C52FD0000100C0D3E2 /* ColorDescription.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A1B2C62FD0000100C0D3E2 /* ColorDescription.swift */; };
 		C0A1B2C72FD0000100C0D3E2 /* PlaybackDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A1B2C82FD0000100C0D3E2 /* PlaybackDiagnostics.swift */; };
+		D1A9C0F12FF0000100C0D3E1 /* LiquidGlassNavigationPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A9C0F32FF0000100C0D3E1 /* LiquidGlassNavigationPlugin.swift */; };
+		D1A9C0F22FF0000100C0D3E1 /* NativeLiquidGlassNavigationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A9C0F42FF0000100C0D3E1 /* NativeLiquidGlassNavigationView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -67,6 +69,8 @@
 		C0A1B2C42FD0000100C0D3E2 /* HdrCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HdrCapability.swift; sourceTree = "<group>"; };
 		C0A1B2C62FD0000100C0D3E2 /* ColorDescription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorDescription.swift; sourceTree = "<group>"; };
 		C0A1B2C82FD0000100C0D3E2 /* PlaybackDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDiagnostics.swift; sourceTree = "<group>"; };
+		D1A9C0F32FF0000100C0D3E1 /* LiquidGlassNavigationPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassNavigationPlugin.swift; sourceTree = "<group>"; };
+		D1A9C0F42FF0000100C0D3E1 /* NativeLiquidGlassNavigationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLiquidGlassNavigationView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -140,6 +144,8 @@
 				C0A1B2C42FD0000100C0D3E2 /* HdrCapability.swift */,
 				C0A1B2C62FD0000100C0D3E2 /* ColorDescription.swift */,
 				C0A1B2C82FD0000100C0D3E2 /* PlaybackDiagnostics.swift */,
+				D1A9C0F32FF0000100C0D3E1 /* LiquidGlassNavigationPlugin.swift */,
+				D1A9C0F42FF0000100C0D3E1 /* NativeLiquidGlassNavigationView.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -321,6 +327,8 @@
 				C0A1B2C32FD0000100C0D3E2 /* HdrCapability.swift in Sources */,
 				C0A1B2C52FD0000100C0D3E2 /* ColorDescription.swift in Sources */,
 				C0A1B2C72FD0000100C0D3E2 /* PlaybackDiagnostics.swift in Sources */,
+				D1A9C0F12FF0000100C0D3E1 /* LiquidGlassNavigationPlugin.swift in Sources */,
+				D1A9C0F22FF0000100C0D3E1 /* NativeLiquidGlassNavigationView.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

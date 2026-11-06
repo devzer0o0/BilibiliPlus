@@ -1,114 +1,150 @@
 # 液态玻璃底部导航栏
 
-移动端主页底栏改为参考录屏中的液态玻璃胶囊：三个入口（首页 / 动态 / 我的）、无文字、
-图标居中、选中项背后一块浅色胶囊。页面切换、回顶刷新、动态角标、头像、导航排序与安全区
-仍由原有控制器负责。
+移动端主页底栏是参考录屏里的液态玻璃胶囊：三个入口（首页 / 动态 / 我的）、无文字、图标居中、
+选中项背后一块浅色胶囊。页面切换、回顶刷新、动态角标、头像、导航排序与安全区仍由原有控制器负责。
 
-![参考与候选对照](images/liquid-glass/compare-nav.png)
+**当前实现（本轮起）**：iOS 26+ 由 UIKit 原生胶囊承载材质（UIVisualEffectView + UIGlassEffect），
+Flutter 只负责页面、业务状态、外层布局与无障碍标签；其余平台与低版本系统保留原来的 Flutter
+材质作为回退。历史章节保留第一版 shader 实现的记录，它现在只在回退路径上使用。
 
-## 1. 入口与接入点
+![模拟器深色（原生玻璃）](images/liquid-glass/native-dark-dynamics.jpg)
+![模拟器浅色（原生玻璃）](images/liquid-glass/native-light-dynamics.jpg)
 
-- 组件：`lib/common/widgets/liquid_glass_navigation_bar.dart`（布局 / 三入口 / 选中块 / 点击 / 语义）
-- 材质：`lib/common/widgets/liquid_glass_surface.dart`（shader 加载、能力检测、降级、生命周期）
-- 着色器：`assets/liquid_glass/liquid_nav.frag`（单胶囊背景折射，`pubspec.yaml` 的 `shaders:` 声明）
-- 接入：`lib/pages/main/view.dart` 的 `_bottomNav`，仅 `useBottomNav` 分支；侧栏 / NavigationRail /
-  平板侧边导航完全不变。页面仍由原来的 PageView / TabBarView + MainController 管理。
+## 1. 文件与职责
 
-着色器没有放在 `assets/shaders/`：该目录是播放器 GLSL 的普通资源目录，Flutter 工具会拒绝
-把 `shaders:` 中声明的文件同时当作普通资源打包（`Shader ... is included in the asset directory`）。
+| 文件 | 职责 |
+| --- | --- |
+| lib/common/widgets/native_liquid_glass_navigation_bar.dart | Dart 桥接：能力查询、状态通道、点击回传、图标栅格化、头像解码、布局 |
+| ios/Runner/LiquidGlassNavigationPlugin.swift | 插件注册、viewType、getCapabilities |
+| ios/Runner/NativeLiquidGlassNavigationView.swift | 原生胶囊：UIGlassEffect、三个按钮、选中块、角标、无障碍、命中测试 |
+| ios/Runner/AppDelegate.swift | 在 didInitializeImplicitFlutterEngine 里注册（与 Pip / Hdr 并列） |
+| lib/pages/main/view.dart | 选取原生或回退分支；三入口的数据来源；动态角标 |
+| lib/common/widgets/liquid_glass_navigation_bar.dart | 回退用的 Flutter 胶囊（原实现，行为不变） |
+| lib/common/widgets/liquid_glass_surface.dart | 回退用的 shader / blur / solid 材质 |
+| test/common/native_liquid_glass_nav_bar_test.dart | 桥接测试（稳定 id、增量更新、重复点击、过期头像、销毁） |
 
-## 2. 材质实现
+这不是完整的系统 UITabBar，而是"用系统玻璃材质的自定义导航容器"：保留无文字、三项等距、
+圆形头像与既定胶囊尺寸。没有把页面导航重构成 UITabBarController。
 
-1. `BackdropFilter` + `ImageFilter.shader` 实时采样已绘制的背景，不截图、不 toImage、不复制页面。
-   滤波器为 `ImageFilter.compose(outer: shader, inner: blur)`：先低估模糊、再按轮廓位移采样。
-   `u_size`（引擎写入的输入纹理尺寸）与首个 sampler 由引擎提供，其余 uniform 在 paint 阶段按
-   `localToGlobal` 的实际绘制变换写入，不使用 GlobalKey 或 post-frame 回调。
-2. 轮廓：着色器内胶囊 SDF；中心差分得到法线；`band=13pt` 的环带内按 `(1-内距/band)^2` 向外
-   位移最多 `9pt`，中心只做 `1.5%` 轻微放大。上下缘因此出现参考中的压缩/拉伸。
-   GLES 后端按官方约定翻转 y。
-3. 合成（普通 Flutter 绘制，清晰、不参与折射）：深色模式黑色 tint `0x5E→0x45` 自顶向下渐变；
-   浅色模式白色 `0x8A→0x66`；1pt 边缘高光（白 `0.15/0.11`，浅色 `0.6/0.5`）加 1.2px 模糊内发光。
-   深色背景上的近黑外观来自「背景 × tint」，不是不透明黑。
-4. 选中块：82×36、圆角 18 的普通半透明填充（深色白 12%，浅色黑 8%），没有第二层背景折射；
-   在其上再画图标与头像，保证图标清晰。
+## 2. 原生材质与分支选择
 
-运行模式（日志 `[liquid-glass] render mode: ...`，仅 debug）：
+- iOS 26 及以上：UIVisualEffectView 配 UIGlassEffect(style: .clear)，isInteractive = true，
+  cornerConfiguration = .capsule()；按钮、图标、头像、选中块都加在 effectView.contentView 里。
+  透明位置不补底色，原生视图与祖先 alpha 恒为 1。
+- 首轮用 .clear 对齐录屏的通透感；构建时可用 --dart-define=GLASS_STYLE=regular 切到标准玻璃做对照，
+  不需要改 Swift。**本轮没有真机，.regular 与 .clear 的可读性对照尚未执行**，只跑过默认的 .clear。
+- iOS 26 以下、非 iOS、能力查询失败、平台视图 3 秒内未创建：走 Flutter 回退（第 8 节）。
+  回退会打印 [native-glass] Flutter fallback: <reason>；**支持原生的设备不允许静默回退后仍按原生验收**。
+- 能力查询在 runApp 之前（lib/main.dart 的启动 Future.wait）完成并缓存，因此首帧不会先画 shader
+  再跳成原生。
+- 日志：debug 下 [native-glass] capabilities: ... 与 [native-glass] view <id>: {material: ...}；
+  material 字段由原生 describe 返回，直接证明当前跑的是 UIGlassEffect 而不是着色器。
 
-| 模式 | 条件 | 表现 |
-| --- | --- | --- |
-| refraction | Impeller（`ImageFilter.isShaderFilterSupported`）且 shader 加载成功 | 完整折射 + 低模糊 |
-| blur | 非 Impeller、shader 资源失败、首帧未加载完 | 同样的胶囊、tint、高光与交互，普通背景模糊 |
-| solid | `MediaQuery.highContrastOf` 为真 | 实色填充，保证可读 |
+## 3. 桥接协议
 
-Flutter 没有暴露 iOS「降低透明度」平台标志，只有 `highContrast` 与 `disableAnimations`；
-本轮没有为此新增平台桥接。
+- 能力通道：piliplus/native_liquid_glass_nav/capabilities，方法 getCapabilities，返回
+  supported / effect / osVersion / deviceModel / unsupportedReason 与三项辅助功能开关。
+- 实例通道：piliplus/native_liquid_glass_nav/<viewId>，按平台视图 id 隔离。
+  Dart→原生：updateState（全量快照 + revision），describe（诊断）。
+  原生→Dart：onTap {id}，只回稳定 destinationId。
+- 状态字段：items[{id,label,iconKey,selectedIconKey,isAvatar,accessibilityValue,badge{visible,text,isDot}}]、
+  selectedId、theme、animate、visible、interactive、pixelRatio、style、avatarToken、avatar、icons{key:png}。
+- 不把 Widget 传进 MethodChannel；creationParams 只用于初始化，之后一律走 updateState。
+- 稳定 key：平台视图用固定 ValueKey；切换选中、未读、头像只发状态，不重建视图。
+- 顺序保护：每次状态带递增 revision，原生丢弃乱序包；创建完成后重发最新状态，并清空"已送图标"集合。
+- 发送节流：build 里先算签名（选中项、主题、可见性、角标、图标键、头像 token），只有变化才发；
+  图标只在键变化时随状态发送。
+- 原生程序性更新选中态（apply）不会回调 onTap；只有真实按钮触摸才会。
 
-## 3. 几何（视频实测 → 采用值）
+## 4. 三个图标与头像
 
-视频 1260×2736、60fps、HEVC Main10 / BT.2020 / PQ。抽帧用 numpy 做 PQ EOTF → BT.2020→709 → SDR
-色调映射后测量，未修改原始文件。按 3× 折算（iPhone Air 逻辑尺寸 420×912）：
+- 首页：Icons.home_outlined / Icons.home_rounded（保留上一轮已确认的设计）。
+- 动态：恢复项目原有图标 CustomIcons.motion_photos_on_outlined（0xe80b）/
+  CustomIcons.motion_photos_on（0xe80a），来自 lib/models/common/nav_bar_config.dart。
+  自绘的 _LiquidDynamicsGlyph / _LiquidDynamicsGlyphPainter 已删除。
+- 我的：24pt 圆形账户头像；未登录、face 为空、加载失败时回退 person_rounded 占位。
+- 图标位图：Dart 用 FontFamily + codePoint 离屏栅格化（23pt × devicePixelRatio），保持原字形与居中；
+  不做页面截图。原生以 alwaysTemplate 渲染跟随前景色；键含字形/尺寸/像素密度，变化才重发。
+- 头像：复用 CachedNetworkImageProvider（与 Flutter 头像同一缓存与 provider），PNG 过桥后以
+  alwaysOriginal 渲染成圆形，不做单色 tint；token 等于 face URL，异步结果按 token + 请求序号丢弃过期值。
+- 角标：数字（>99 显示 99+）、红点、隐藏三态由原生绘制；读屏通过 accessibilityValue 表达未读数。
 
-| 项目 | 视频实测 | 实现 |
-| --- | --- | --- |
-| 外壳 | 360.3 × 52.7，圆角 26.3 | 360 × 52，圆角 26 |
-| 左右边距 | 29.7 / 30 | 30 |
-| 外壳底距屏底 | 33.3 | `max(viewPadding.bottom, 12)`，iPhone Air 上为 34 |
-| 选中块 | 81.7 × 36，圆角 18 | 82 × 36，圆角 18 |
-| 首页图标 | 22 × 20 | 23 图标框（glyph ≈20） |
-| 第二图标 | 18 × 22.7（竖长圆角菱形 + 播放三角） | 本地矢量绘制，同比例 |
-| 我的头像 | 24 × 24 | 24 |
-| 边缘高光 | 峰值 ≈0.165 白，1pt | 1pt，深色 0.15/0.11 |
+## 5. 尺寸、安全区与触摸
 
-三项布局：外壳宽度不变，三个交互区等宽（420 屏上 120pt），选中块保持 82pt 不拉满，
-窄屏时取 `min(82, 单元宽-16)`。安全区只计一次：MainApp 把 `_padding.bottom` 显式传入，
-组件内部不再套 SafeArea（该子树已被 `MediaQuery.removePadding` 清空）。
+| 项目 | 值 |
+| --- | --- |
+| 胶囊 | 高 52，最大宽 360，左右边距 30，圆角 26 |
+| 选中块 | 82 × 36，圆角 18；窄屏取 min(82, 单元宽-16) |
+| 图标 / 头像 | 23 / 24 |
+| 三项 | 均分胶囊内部宽度 |
 
-## 4. 偏好与兼容
+- 安全区只在 Flutter 计算一次（MainApp 把 viewPadding.bottom 传入），Swift 不读 safeAreaInsets。
+- 原生平台视图的 frame 就是胶囊本身；外侧边距与底部留白是 Flutter 的布局。
+- 命中测试按胶囊圆角路径裁剪：四个透明圆角与胶囊之外都返回 nil，正文可以继续点击/滚动；
+  UiKitView 用 translucent，避免整块区域吞掉手势。
+- 三个按钮各自完整可点、互不重叠；Flutter 侧没有同位置的手势，一次点击只会有一次业务响应。
+- 选中块用 CABasicAnimation 动画 position.x，起点读取 presentation layer，快速连点从当前位置继续；
+  减少动态效果时直接落位。按压反馈是图标 0.9 缩放，与选中动画分开。
+- 键盘弹出时整条底栏不参与布局、命中与语义；隐藏时原生同步 visible=false 并关闭无障碍暴露。
 
-- `liquidGlassNavBar`（`storage_key` / `storage_pref`），移动端默认开启，优先于
-  `floatingNavBar` 与 `enableMYBar`；设置页「液态玻璃底栏」写明了这个优先级，另外两项的
-  副标题也标注了「仅在关闭后生效」，默认值与 `Pref` 读取逻辑一致。
-- `hideBottomBar` 默认在移动端为 true，但玻璃模式沿用录屏中「常驻」的行为：
-  只有用户**从未保存过**该开关时才忽略默认值；显式保存过的值（开或关）仍然生效，
-  收起方式继续沿用 instant / sync 两种原有模式。判断依据是 Hive 的 `containsKey`，不改写用户存储。
-- 关闭方法：设置 → 样式设置 → 关闭「液态玻璃底栏」，即恢复原来的悬浮底栏 / MD3 底栏 /
-  经典底栏选择；或直接把 `liquidGlassNavBar` 写回 false。
-- `liquidGlassNavBar` 已加入备份注册的 general 分类。
+## 6. 兼容与无障碍
 
-## 5. 交互
+- 沿用既有 liquidGlassNavBar 偏好，没有新增产品开关。
+- 降低透明度：原生把材质换成不透明系统底色（与系统自身行为一致），不强行恢复透明。
+- 提高对比度：提高图标不透明度、选中块对比与描边。
+- 减少动态效果：选中块不做位移动画。
+- VoiceOver：每项是按钮、标签为首页/动态/我的，选中项带 selected；未读数放在 accessibilityValue。
+  原生视图是唯一语义来源，Flutter 侧不再产生第二套节点（回退分支才由 Flutter 提供语义）。
 
-- 点击仍调用 `MainController.setIndex`，触觉反馈只在控制器里触发一次，底栏不重复。
-- 同页重复点击的回顶 / 刷新、默认页、返回键、导航排序与显隐、动态角标清除、账户切换头像
-  全部沿用原逻辑；入口按 `navigationBars` 实际顺序生成，不硬编码「索引 1 是动态」。
-- 选中块 280ms `easeOutCubic` 平移，快速连点从当前位置改向；`disableAnimations` 时立即落到目标。
-  按压反馈只是图标 0.9 缩放，没有新增拖动选页或长按菜单。
-- 键盘弹出时整条底栏不参与布局、命中与语义；完全隐藏（instant/sync）时同样的处理。
-- 外侧留白不吞事件：只有胶囊内部的三块交互区响应，透明区域交给正文。
-
-## 6. 验证记录
+## 7. 本轮验证
 
 | 项目 | 结果 |
 | --- | --- |
-| 静态检查 | `dart analyze lib test`：0 error，改动文件 0 issue；其余 150 条 info 为既有代码。`flutter analyze`（LSP）在本机崩溃（`analysis server exited with code 255`，JSON 解析异常），属工具环境问题，改用 `dart analyze` |
-| 单元/组件测试 | `flutter test test/common/` 22/22 通过（新增 12 条：回调与选中同步、快速连点、重排/隐藏/单入口、角标与头像占位、降级、420×912 inset 34 组合 MainLayout 几何、无 inset/小屏/uiScale、空白不吞点击、键盘隐藏、reduce motion、语义） |
-| 构建 | iOS 模拟器 debug 构建并实际运行（Impeller Metal，日志 `render mode: refraction`）；release / no-codesign 构建见提交说明 |
-| 模拟器 | iPhone Air（420×912，与录屏同逻辑尺寸）深色 / 浅色截图、材质与降级对照 |
-| 真机 | **未验证**：本轮没有可连接的 iPhone（`flutter devices` 只有 macOS 与 Chrome；无线设备不可达）。所有「真机」结论均为未验证 |
-| 性能 | **未测**：没有脚本化滚动/切换的计时数据，不把编译成功当作帧率达标 |
-| 与参考的视觉对照 | 外壳位置、宽高、圆角、图标与头像中心、选中块尺寸、边缘高光峰值已按像素测量对齐（误差 ≤1–2pt）；材质方向与强度按同背景截图目视校准 |
+| Dart 静态分析 | dart analyze 改动文件：0 issue |
+| 组件/桥接测试 | flutter test 两个底栏测试文件 20/20 通过（新增 8 条桥接用例） |
+| iOS 构建（无签名） | flutter build ios --debug --no-codesign 通过 |
+| iOS 构建（签名） | tool/ios_build.sh debug，Team 8TQDS9JT23，产物已签名 |
+| 模拟器 | iPhone Air（420×912）iOS 27.2：确认走原生分支（日志 material: UIGlassEffect.clear）；胶囊/选中块/图标/头像位置按像素测量与 Flutter 布局一致（胶囊 30→390pt、底 878pt、选中块 82×36）；深色/浅色截图；角标 5 / 99+ / 红点 / 隐藏；头像清空后回落到人形占位；setIndex 切换后选中块与内容同步 |
+| 真机 | **BLOCKED_DEVICE_UNAVAILABLE**：目标机 UDID 00008150-001E5C592E78401C 在 12:00 之后从 USB 与 devicectl 上消失（Device State: unavailable），签名包已生成但无法安装/启动。真机材质、按压、滚动合成、VoiceOver、性能均未取得证据 |
+| 性能 | **未测**：没有真机滚动/切换的帧耗时与内存数据，不把构建通过当作帧率达标 |
 
-对照图：`images/liquid-glass/reference-nav.png`（参考）、`candidate-nav.png`（候选）、
-`app-dark.png`（真实 app 内深色）。
+模拟器证据（均取自整屏截图，不是单张 UIVisualEffectView 快照）：
+images/liquid-glass/native-dark-dynamics.jpg、native-light-dynamics.jpg、native-badge-99.jpg、
+native-avatar-fallback.jpg、native-selected-mine.jpg。
 
-## 7. 已知差异 / 未验证事项
+## 8. 回退实现（历史记录）
 
-- 入口 4 → 3：视频第 3 项「＋」按要求删除，其余三项等距重排，外壳宽度与选中块尺寸保持不变；
-  因此不做整图像素相等比较。
-- 视频只展示首页选中与列表滚动，没有展示点击切换、选中块滑动、长按；切换动画、按压反馈属于
-  补齐的设计，不是视频观察到的要求。
-- 视频只提供深色背景；浅色模式是同结构适配，没有参考可对照。
-- 模糊强度、tint 比例是目视校准值（视频没有可测的纯色背景做定量反解）。
-- 真机、120Hz 帧预算、横竖屏切换、uiScale 的真机表现、后台恢复、真机键盘与弹层均为未验证。
-- 验收时 app 首页出现 `[Get] the improper use of a GetX` 红屏：把本任务改动整体 stash 后
-  同一红屏仍出现（旧 MD3 底栏），说明来自工作区里并发的首页推荐流改动，与本功能无关，
-  本轮未修改这些文件。
+第一版材质完全在 Flutter 内完成，现仅作为回退：
+
+1. BackdropFilter + ImageFilter.shader 实时采样已绘制背景，不截图、不 toImage；
+   ImageFilter.compose(outer: shader, inner: blur)，uniform 在 paint 阶段按 localToGlobal 写入。
+2. 轮廓：shader 内胶囊 SDF，法线用中心差分，band=13pt 环带向外位移最多 9pt，中心 1.5% 放大。
+3. 合成：深色黑色 tint 0x5E→0x45，浅色白色 0x8A→0x66，1pt 边缘高光 + 1.2px 内发光。
+4. 选中块 82×36、圆角 18 的半透明填充，无第二层折射。
+
+运行模式（日志 [liquid-glass] render mode: ...）：refraction / blur / solid；solid 由 highContrast
+触发。Flutter 没有暴露 iOS「降低透明度」平台标志，回退分支只处理 highContrast 与 disableAnimations。
+
+## 9. 与参考的差异、未验证事项
+
+- 入口 4 → 3：视频第 3 项「＋」按要求删除，三项等距重排；不做整图像素相等比较。
+- 视频只展示首页选中与列表滚动；切换动画、按压反馈是补齐的设计。
+- 按压反馈（isInteractive 与按钮 0.9 缩放）只编译验证过，没有真机触摸证据。
+- 视频只有深色背景；浅色是同结构适配，没有参考可对照。
+- **真机未验证**：材质在真实设备上的折射/高光、滚动时背景实时性、按压、VoiceOver、降低透明度、
+  键盘与弹层、旋转、前后台切换、内存与帧率，都还没有目标设备的证据。
+- 模拟器上滚动时胶囊内像素变化很小（深色列表内容接近均匀），无法据此判断材质实时性；必须用真机
+  录屏确认，不能用模拟器结果替代。
+- 验收时首页出现 [Get] improper use of a GetX 红屏：与底栏无关（回退分支同样出现），来自工作区里
+  并发的首页推荐流改动；本轮未修改这些文件。
+
+## 10. 真机验收步骤（待设备可用后执行）
+
+    PILIPLUS_DEVELOPMENT_TEAM=8TQDS9JT23 bash tool/ios_build.sh debug
+    xcrun devicectl device install app --device <UDID> build/ios/iphoneos/Runner.app
+    xcrun devicectl device process launch --device <UDID> com.example.pilipalax
+    xcrun devicectl device capture screen-record --device <UDID> --output nav.mov
+    xcrun devicectl device capture screenshot --device <UDID> --output nav.png
+
+启动后先看控制台是否有 [native-glass] view <id>: {material: UIGlassEffect.clear}；没有就是回退，
+不能按原生通过。录屏时滚动首页列表，检查胶囊内背景是否随列表实时变化、边缘是否有折射高光。

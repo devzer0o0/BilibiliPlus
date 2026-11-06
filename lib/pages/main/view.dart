@@ -1,12 +1,12 @@
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/floating_navigation_bar.dart';
-import 'package:PiliPlus/common/widgets/liquid_glass_navigation_bar.dart';
 import 'package:PiliPlus/common/widgets/flutter/pop_scope.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
+import 'package:PiliPlus/common/widgets/liquid_glass_navigation_bar.dart';
 import 'package:PiliPlus/common/widgets/main_layout.dart';
+import 'package:PiliPlus/common/widgets/native_liquid_glass_navigation_bar.dart';
 import 'package:PiliPlus/common/widgets/route_aware_mixin.dart';
 import 'package:PiliPlus/models/common/dynamic/dynamic_badge_mode.dart';
 import 'package:PiliPlus/models/common/nav_bar_config.dart';
@@ -22,6 +22,7 @@ import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/mobile_observer.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
@@ -40,6 +41,11 @@ class _MainAppState extends PopScopeState<MainApp>
   late EdgeInsets _padding;
   late ColorScheme _colorScheme;
   Brightness? _brightness;
+
+  /// Set when the native platform view could not be created. The bar then uses
+  /// the Flutter material, and this session is never reported as a native pass.
+  bool _nativeGlassFailed = false;
+  bool _loggedGlassFallback = false;
 
   @override
   bool get initCanPop => false;
@@ -157,18 +163,37 @@ class _MainAppState extends PopScopeState<MainApp>
     Widget? bottomNav;
     if (_mainController.navigationBars.length > 1) {
       if (_mainController.liquidGlassNavBar) {
-        bottomNav = Obx(
-          () => LiquidGlassNavigationBar(
-            selectedIndex: _mainController.selectedIndex.value,
-            onDestinationSelected: _mainController.setIndex,
-            // MainApp removed the ambient padding for the bar subtree; the real
-            // inset is handed over explicitly so it is counted exactly once.
-            bottomInset: _padding.bottom,
-            destinations: _mainController.navigationBars
-                .map(_buildLiquidDestination)
-                .toList(),
-          ),
-        );
+        // The capability answer is fetched before the first frame, so this is
+        // synchronous and the shader never appears on a device that can render
+        // UIGlassEffect.
+        final capabilities = NativeLiquidGlassNavigation.cachedCapabilities;
+        final useNative =
+            !_nativeGlassFailed && (capabilities?.usesUIGlassEffect ?? false);
+        if (!useNative && !_loggedGlassFallback) {
+          _loggedGlassFallback = true;
+          if (kDebugMode) {
+            debugPrint(
+              '[native-glass] Flutter fallback: '
+              '${capabilities?.unsupportedReason ?? 'unsupported'}',
+            );
+          }
+        }
+        if (useNative) {
+          bottomNav = Obx(_nativeGlassBar);
+        } else {
+          bottomNav = Obx(
+            () => LiquidGlassNavigationBar(
+              selectedIndex: _mainController.selectedIndex.value,
+              onDestinationSelected: _mainController.setIndex,
+              // MainApp removed the ambient padding for the bar subtree; the
+              // real inset is handed over explicitly so it is counted once.
+              bottomInset: _padding.bottom,
+              destinations: _mainController.navigationBars
+                  .map(_buildLiquidDestination)
+                  .toList(),
+            ),
+          );
+        }
       } else if (_mainController.floatingNavBar) {
         bottomNav = Obx(
           () => FloatingNavigationBar(
@@ -266,6 +291,100 @@ class _MainAppState extends PopScopeState<MainApp>
     }
 
     return bottomNav;
+  }
+
+  /// Native capsule, controlled by [MainController] exactly like the Flutter
+  /// bar: ids are the enum names, the index is resolved against the ordering
+  /// that is on screen when the tap arrives, and the haptic stays in setIndex.
+  Widget _nativeGlassBar() {
+    final controller = _mainController;
+    final bars = controller.navigationBars;
+    final selected = controller.selectedIndex.value.clamp(0, bars.length - 1);
+    final account = controller.accountService;
+    // A platform view always sits above Flutter content, so a dialog, a bottom
+    // sheet or a pushed page would otherwise be covered by the capsule. The
+    // main route stops being current the moment anything is pushed on top.
+    final route = ModalRoute.of(context);
+    final obscured = route != null && !route.isCurrent;
+    return NativeLiquidGlassNavigationBar(
+      selectedId: bars[selected].name,
+      destinations: bars.map(_buildNativeDestination).toList(),
+      avatarUrl: account.isLogin.value ? account.face.value : '',
+      visible: !_barHidden() && !obscured,
+      bottomInset: _padding.bottom,
+      onDestinationSelected: (index) {
+        final current = controller.navigationBars;
+        if (index < 0 || index >= current.length) return;
+        controller.setIndex(index);
+      },
+      onUnavailable: () {
+        if (!mounted) return;
+        debugPrint(
+          '[native-glass] platform view unavailable; using the Flutter '
+          'material for this session',
+        );
+        setState(() => _nativeGlassFailed = true);
+      },
+    );
+  }
+
+  /// Mirrors the hide logic applied to every bottom bar, so the native view can
+  /// drop accessibility and interaction while it is off screen.
+  bool _barHidden() {
+    if (!_mainController.hideBottomBar) return false;
+    if (_mainController.barOffset case final offset?) {
+      return offset.value >= Style.topBarHeight - 0.5;
+    }
+    if (_mainController.showBottomBar case final show?) {
+      return !show.value;
+    }
+    return false;
+  }
+
+  NativeLiquidGlassDestination _buildNativeDestination(NavigationBarType type) {
+    final badge = _nativeBadge(type);
+    return NativeLiquidGlassDestination(
+      id: type.name,
+      label: type.label,
+      // Only the 动态 glyph comes from the shared navigation config: 首页 and
+      // 我的 keep the designs that were already approved for the glass bar.
+      icon: switch (type) {
+        .home => Icons.home_outlined,
+        .dynamics => type.icon.icon!,
+        .mine => Icons.person_rounded,
+      },
+      selectedIcon: switch (type) {
+        .home => Icons.home_rounded,
+        .dynamics => type.selectIcon.icon!,
+        .mine => Icons.person_rounded,
+      },
+      isAvatar: type == .mine,
+      badgeVisible: badge.visible,
+      badgeText: badge.text,
+      badgeIsDot: badge.isDot,
+      accessibilityValue: badge.accessibilityValue,
+    );
+  }
+
+  ({bool visible, String? text, bool isDot, String? accessibilityValue})
+  _nativeBadge(NavigationBarType type) {
+    const hidden = (
+      visible: false,
+      text: null,
+      isDot: false,
+      accessibilityValue: null,
+    );
+    if (type != .dynamics) return hidden;
+    final count = _mainController.dynCount.value;
+    final mode = _mainController.dynamicBadgeMode;
+    if (count <= 0 || mode == DynamicBadgeMode.hidden) return hidden;
+    final isDot = mode != DynamicBadgeMode.number;
+    return (
+      visible: true,
+      text: isDot ? null : (count > 99 ? '99+' : '$count'),
+      isDot: isDot,
+      accessibilityValue: '$count 条未读',
+    );
   }
 
   Widget _sideBar() {
@@ -437,8 +556,8 @@ class _MainAppState extends PopScopeState<MainApp>
       case .dynamics:
         return LiquidGlassDestination(
           label: type.label,
-          icon: const _LiquidDynamicsGlyph(),
-          selectedIcon: const _LiquidDynamicsGlyph(selected: true),
+          icon: type.icon,
+          selectedIcon: type.selectIcon,
           badge: _liquidDynamicsBadge(),
         );
       case .mine:
@@ -544,76 +663,5 @@ class _MainAppState extends PopScopeState<MainApp>
         ),
       ],
     );
-  }
-}
-/// The reference bar's second glyph: a rounded, slightly rotated outline with
-/// a play mark, standing in for the existing 动态 page. Drawn locally so the
-/// stroke weight stays crisp at the bar's icon size and does not drag the rest
-/// of the navigation chrome along (the sidebar keeps its Material icons).
-class _LiquidDynamicsGlyph extends StatelessWidget {
-  const _LiquidDynamicsGlyph({this.selected = false});
-
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) {
-    final color =
-        IconTheme.of(context).color ??
-        (Theme.of(context).brightness == Brightness.dark
-            ? Colors.white
-            : Colors.black);
-    return CustomPaint(
-      size: const Size(kLiquidNavIconSize, kLiquidNavIconSize),
-      painter: _LiquidDynamicsGlyphPainter(
-        color: color,
-        weight: selected ? 2.1 : 1.9,
-      ),
-    );
-  }
-}
-
-class _LiquidDynamicsGlyphPainter extends CustomPainter {
-  const _LiquidDynamicsGlyphPainter({required this.color, required this.weight});
-
-  final Color color;
-  final double weight;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    // The reference glyph is a tall rounded rhombus, not a wide one.
-    final w = size.width * 0.74;
-    final h = size.height * 0.92;
-    canvas
-      ..save()
-      ..translate(center.dx, center.dy)
-      ..rotate(-10 * math.pi / 180);
-
-    final rrect = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: Offset.zero, width: w, height: h),
-      Radius.circular(size.width * 0.28),
-    );
-    canvas.drawRRect(
-      rrect,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = weight
-        ..strokeJoin = StrokeJoin.round
-        ..color = color,
-    );
-
-    final play = Path()
-      ..moveTo(-w * 0.16, -h * 0.26)
-      ..lineTo(w * 0.30, 0)
-      ..lineTo(-w * 0.16, h * 0.26)
-      ..close();
-    canvas
-      ..drawPath(play, Paint()..color = color)
-      ..restore();
-  }
-
-  @override
-  bool shouldRepaint(_LiquidDynamicsGlyphPainter oldDelegate) {
-    return oldDelegate.color != color || oldDelegate.weight != weight;
   }
 }

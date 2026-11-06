@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:PiliPlus/build_config.dart';
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/common/widgets/back_detector.dart';
+import 'package:PiliPlus/common/widgets/native_liquid_glass_navigation_bar.dart';
 import 'package:PiliPlus/common/widgets/custom_toast.dart';
 import 'package:PiliPlus/common/widgets/route_aware_mixin.dart';
 import 'package:PiliPlus/common/widgets/scale_app.dart';
@@ -181,6 +182,9 @@ void main() async {
       if (Pref.horizontalScreen) ?fullMode() else ?portraitUpMode(),
       setupServiceLocator(),
       if (Platform.isIOS) IOSPipHelper.init(),
+      // Resolved before the first frame so the bottom bar can pick the native
+      // material synchronously instead of painting the shader and swapping.
+      if (Platform.isIOS) NativeLiquidGlassNavigation.prefetchCapabilities(),
       // Which codecs this build can actually decode in hardware. Without it the
       // order is a guess from the catalogue, and a guess that prefers AV1 on a
       // build without the AV1 backport sends a 2160p stream to libdav1d.
