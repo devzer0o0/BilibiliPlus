@@ -7,8 +7,9 @@
 Flutter 只负责页面、业务状态、外层布局与无障碍标签；其余平台与低版本系统保留原来的 Flutter
 材质作为回退。历史章节保留第一版 shader 实现的记录，它现在只在回退路径上使用。
 
+![真机浅色：首页列表与原生胶囊](images/liquid-glass/device-light-home.jpg)
+![真机浅色：我的页，选中块落在第三个入口](images/liquid-glass/device-light-mine.jpg)
 ![模拟器深色（原生玻璃）](images/liquid-glass/native-dark-dynamics.jpg)
-![模拟器浅色（原生玻璃）](images/liquid-glass/native-light-dynamics.jpg)
 
 ## 1. 文件与职责
 
@@ -105,8 +106,13 @@ Flutter 只负责页面、业务状态、外层布局与无障碍标签；其余
 | iOS 构建（无签名） | flutter build ios --debug --no-codesign 通过 |
 | iOS 构建（签名） | tool/ios_build.sh debug，Team 8TQDS9JT23，产物已签名 |
 | 模拟器 | iPhone Air（420×912）iOS 27.2：确认走原生分支（日志 material: UIGlassEffect.clear）；胶囊/选中块/图标/头像位置按像素测量与 Flutter 布局一致（胶囊 30→390pt、底 878pt、选中块 82×36）；深色/浅色截图；角标 5 / 99+ / 红点 / 隐藏；头像清空后回落到人形占位；setIndex 切换后选中块与内容同步 |
-| 真机 | **BLOCKED_DEVICE_UNAVAILABLE**：目标机 UDID 00008150-001E5C592E78401C 在 12:00 之后从 USB 与 devicectl 上消失（Device State: unavailable），签名包已生成但无法安装/启动。真机材质、按压、滚动合成、VoiceOver、性能均未取得证据 |
-| 性能 | **未测**：没有真机滚动/切换的帧耗时与内存数据，不把构建通过当作帧率达标 |
+| 真机材质 | **已验证**：iPhone Air（iPhone18,4）iOS 27.3 24C5037i，profile 签名包（Team 8TQDS9JT23）。启动日志 [native-glass] material=UIGlassEffect.clear os=27.3 reduceTransparency=false reduceMotion=false |
+| 真机点击 | **已验证**：手动点「动态」「我的」「首页」，选中块与页面跟随；再点当前项触发回顶/刷新（用户操作，非脚本） |
+| 真机背景采样 | **已验证**：滚动时连续截图，胶囊内部平均亮度随下方内容在 111→235→252→118 间变化；停止滚动后连续 9 帧完全一致（0 变化），说明是实时采样而不是静态白底 |
+| 真机遮挡 | **已验证**：进入视频详情页后胶囊消失，返回主页面后恢复 |
+| 深色真机 | **未验证**：设备当前为浅色；只能给模拟器深色证据 |
+| VoiceOver / 降低透明度 / 提高对比度 / 减少动态 | **未验证**：没有改设备辅助功能设置（按要求不改系统设置），只做了代码路径与模拟器检查 |
+| 性能 | **未测**：xctrace 把该设备列为 "Devices Offline"，lldb/Instruments 通道同样不可用；没有真机帧耗时、掉帧与内存数据，不把构建通过当作帧率达标 |
 
 模拟器证据（均取自整屏截图，不是单张 UIVisualEffectView 快照）：
 images/liquid-glass/native-dark-dynamics.jpg、native-light-dynamics.jpg、native-badge-99.jpg、
@@ -131,8 +137,12 @@ native-avatar-fallback.jpg、native-selected-mine.jpg。
 - 视频只展示首页选中与列表滚动；切换动画、按压反馈是补齐的设计。
 - 按压反馈（isInteractive 与按钮 0.9 缩放）只编译验证过，没有真机触摸证据。
 - 视频只有深色背景；浅色是同结构适配，没有参考可对照。
-- **真机未验证**：材质在真实设备上的折射/高光、滚动时背景实时性、按压、VoiceOver、降低透明度、
-  键盘与弹层、旋转、前后台切换、内存与帧率，都还没有目标设备的证据。
+- **真机已确认**：走的是 UIGlassEffect、点击可用、背景实时采样、详情页遮挡正常。
+  **仍未验证**：深色主题下的真机表现、按压动效的体感、VoiceOver、降低透明度/提高对比度、
+  键盘弹出、旋转、前后台恢复、内存与帧率。
+- 本机 flutter run（debug）在该设备上会停在 Installing and launching 并报
+  OS Error: Can't assign requested address, errno = 49（lldb 调试通道问题）；真机验收改走
+  profile 包 + devicectl 启动，日志来自 devicectl 的 --console。
 - 模拟器上滚动时胶囊内像素变化很小（深色列表内容接近均匀），无法据此判断材质实时性；必须用真机
   录屏确认，不能用模拟器结果替代。
 - 验收时首页出现 [Get] improper use of a GetX 红屏：与底栏无关（回退分支同样出现），来自工作区里
@@ -140,11 +150,13 @@ native-avatar-fallback.jpg、native-selected-mine.jpg。
 
 ## 10. 真机验收步骤（待设备可用后执行）
 
-    PILIPLUS_DEVELOPMENT_TEAM=8TQDS9JT23 bash tool/ios_build.sh debug
+    PILIPLUS_DEVELOPMENT_TEAM=8TQDS9JT23 bash tool/ios_build.sh profile
     xcrun devicectl device install app --device <UDID> build/ios/iphoneos/Runner.app
-    xcrun devicectl device process launch --device <UDID> com.example.pilipalax
-    xcrun devicectl device capture screen-record --device <UDID> --output nav.mov
-    xcrun devicectl device capture screenshot --device <UDID> --output nav.png
+    xcrun devicectl device process launch --console --terminate-existing \
+        --device <UDID> com.example.pilipalax
+    xcrun devicectl device capture screen-record --device <UDID> \
+        --destination nav.mp4 --duration 30
+    xcrun devicectl device capture screenshot --device <UDID> --destination nav.png
 
-启动后先看控制台是否有 [native-glass] view <id>: {material: UIGlassEffect.clear}；没有就是回退，
-不能按原生通过。录屏时滚动首页列表，检查胶囊内背景是否随列表实时变化、边缘是否有折射高光。
+启动后用控制台里的 [native-glass] material=UIGlassEffect.clear 判断是否原生；没有这行就是回退，
+不能按原生通过。debug 包在本机目前无法用 flutter run 启动（见第 9 节），profile 包可以直接启动。

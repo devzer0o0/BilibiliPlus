@@ -164,6 +164,26 @@ final class NativeLiquidGlassNavigationView: UIView {
         glassView.cornerConfiguration = .capsule()
         glassView.backgroundColor = .clear
         glassView.alpha = 1
+        // One line per material install: it is the only way to tell a native
+        // glass bar apart from the Flutter fallback on a device, and it also
+        // records what the process inherited from the system settings.
+        print(
+            "[native-glass] material=" + materialName()
+                + " os=" + UIDevice.current.systemVersion
+                + " reduceTransparency=" + String(UIAccessibility.isReduceTransparencyEnabled)
+                + " reduceMotion=" + String(UIAccessibility.isReduceMotionEnabled)
+        )
+    }
+
+    private func materialName() -> String {
+        if #available(iOS 26.0, *) {
+            if glassView.effect is UIGlassEffect {
+                return appliedStyle == "regular" ? "UIGlassEffect.regular" : "UIGlassEffect.clear"
+            }
+        } else if glassView.effect is UIBlurEffect {
+            return "UIBlurEffect.systemThinMaterial"
+        }
+        return "none"
     }
 
     /// Reduce Transparency replaces the material with an opaque surface, which
@@ -397,16 +417,7 @@ final class NativeLiquidGlassNavigationView: UIView {
     // MARK: - Diagnostics
 
     func describe() -> [String: Any] {
-        var material = "none"
-        if #available(iOS 26.0, *) {
-            if glassView.effect is UIGlassEffect {
-                material = appliedStyle == "regular"
-                    ? "UIGlassEffect.regular"
-                    : "UIGlassEffect.clear"
-            }
-        } else if glassView.effect is UIBlurEffect {
-            material = "UIBlurEffect.systemThinMaterial"
-        }
+        var material = materialName()
         let reduceTransparency = UIAccessibility.isReduceTransparencyEnabled
         if reduceTransparency {
             material += "+reduceTransparency"
