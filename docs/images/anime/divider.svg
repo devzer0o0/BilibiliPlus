@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 90" font-family="'PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Source Han Sans SC','Microsoft YaHei',sans-serif">
+<path d="M80,45 H590" stroke="#F0B9CD" stroke-width="4" stroke-dasharray="16 14" stroke-linecap="round"/>
+<path d="M690,45 H1200" stroke="#F0B9CD" stroke-width="4" stroke-dasharray="16 14" stroke-linecap="round"/>
+<rect x="622" y="27" width="36" height="36" rx="9" transform="rotate(45 640 45)" fill="#FF7EA5"/>
+<path d="M634,36 l14,9 -14,9 Z" fill="#fff"/>
+<path transform="translate(600,24)" fill="#FFC96B" opacity="0.8" d="M0,-8 Q1.76,-1.76 8,0 Q1.76,1.76 0,8 Q-1.76,1.76 -8,0 Q-1.76,-1.76 0,-8 Z"/><path transform="translate(690,66)" fill="#6FC7F2" opacity="0.8" d="M0,-7 Q1.54,-1.54 7,0 Q1.54,1.54 0,7 Q-1.54,1.54 -7,0 Q-1.54,-1.54 0,-7 Z"/><path transform="translate(180,30) rotate(20) scale(0.8)" fill="#FF7EA5" opacity="0.5" d="M0,0 C6,-9 17,-7 15,4 C13,13 2,15 0,0 Z"/><path transform="translate(1080,64) rotate(-20) scale(0.8)" fill="#FF7EA5" opacity="0.5" d="M0,0 C6,-9 17,-7 15,4 C13,13 2,15 0,0 Z"/>
+<text x="640" y="82" font-size="12" fill="#F06AA0" font-weight="700" text-anchor="middle" letter-spacing="4">· TO BE CONTINUED ·</text>
+</svg>

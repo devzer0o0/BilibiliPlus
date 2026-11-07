@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 430" font-family="'PingFang SC','Hiragino Sans GB','Noto Sans CJK SC','Source Han Sans SC','Microsoft YaHei',sans-serif"><linearGradient id="fbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#FFF1F5"/></linearGradient>
+<rect width="1280" height="430" fill="url(#fbg)"/>
+<g transform="translate(30,20)">
+<rect width="600" height="190" rx="24" fill="#fff" stroke="#FFD9E8" stroke-width="2.5"/>
+<circle cx="76" cy="95" r="46" fill="#FFD9E8"/><g transform="translate(76,95) scale(1.9)">
+<ellipse cx="-11" cy="-3" rx="4.6" ry="6" fill="#3A2E5E"/><circle cx="-12.6" cy="-5.4" r="2" fill="#fff"/>
+<ellipse cx="11" cy="-3" rx="4.6" ry="6" fill="#3A2E5E"/><circle cx="9.4" cy="-5.4" r="2" fill="#fff"/>
+<path d="M-4,6 q4,5 8,0" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+<ellipse cx="-19" cy="3" rx="3.6" ry="2" fill="#FF9DBE" opacity=".7"/><ellipse cx="19" cy="3" rx="3.6" ry="2" fill="#FF9DBE" opacity=".7"/></g>
+<text x="150" y="72" font-size="29" fill="#4A3F6B" font-weight="700" text-anchor="start" >双后端播放 · 4K60 硬解</text>
+<text x="150" y="110" font-size="17" fill="#7A6F96" font-weight="normal" text-anchor="start" >mpv + AVPlayerLayer 双后端 · AV1 硬件解码</text><text x="150" y="138" font-size="17" fill="#7A6F96" font-weight="normal" text-anchor="start" >HDR10 / HLG / 杜比视界直通 · 屏幕像素级输出</text>
+<path transform="translate(560,36)" fill="#FF7EA5" opacity="0.8" d="M0,-10 Q2.2,-2.2 10,0 Q2.2,2.2 0,10 Q-2.2,2.2 -10,0 Q-2.2,-2.2 0,-10 Z"/><path transform="translate(540,60)" fill="#FF7EA5" opacity="0.5" d="M0,-6 Q1.32,-1.32 6,0 Q1.32,1.32 0,6 Q-1.32,1.32 -6,0 Q-1.32,-1.32 0,-6 Z"/></g>
+<g transform="translate(650,20)">
+<rect width="600" height="190" rx="24" fill="#fff" stroke="#D9F0FF" stroke-width="2.5"/>
+<circle cx="76" cy="95" r="46" fill="#D9F0FF"/><rect x="52" y="66" width="48" height="40" rx="10" fill="none" stroke="#6FC7F2" stroke-width="4"/><path d="M62,58 q14,-12 28,0" stroke="#6FC7F2" stroke-width="4" fill="none" stroke-linecap="round"/>
+<text x="150" y="72" font-size="29" fill="#4A3F6B" font-weight="700" text-anchor="start" >液态玻璃底栏 · iOS 26</text>
+<text x="150" y="110" font-size="17" fill="#7A6F96" font-weight="normal" text-anchor="start" >UIGlassEffect 实时折射 · 金色小电视图标</text><text x="150" y="138" font-size="17" fill="#7A6F96" font-weight="normal" text-anchor="start" >iOS 26 以下自动 Flutter 回退 · 不静默降级</text>
+<path transform="translate(560,36)" fill="#6FC7F2" opacity="0.8" d="M0,-10 Q2.2,-2.2 10,0 Q2.2,2.2 0,10 Q-2.2,2.2 -10,0 Q-2.2,-2.2 0,-10 Z"/><path transform="translate(540,60)" fill="#6FC7F2" opacity="0.5" d="M0,-6 Q1.32,-1.32 6,0 Q1.32,1.32 0,6 Q-1.32,1.32 -6,0 Q-1.32,-1.32 0,-6 Z"/></g>
+<g transform="translate(30,220)">
+<rect width="600" height="190" rx="24" fill="#fff" stroke="#FFE9C4" stroke-width="2.5"/>
+<circle cx="76" cy="95" r="46" fill="#FFE9C4"/><text x="76" y="112" text-anchor="middle" font-size="44" font-weight="800" fill="#EFA23B">AI</text>
+<text x="150" y="72" font-size="29" fill="#4A3F6B" font-weight="700" text-anchor="start" >AI 推荐筛选 · 可选支线</text>
+<text x="150" y="110" font-size="17" fill="#7A6F96" font-weight="normal" text-anchor="start" >本地硬过滤前置，AI 只做加法 · 偏好排序 / 严格精选</text><text x="150" y="138" font-size="17" fill="#7A6F96" font-weight="normal" text-anchor="start" >7 天冷启动快照，首帧不再骨架屏</text>
+<path transform="translate(560,36)" fill="#FFC96B" opacity="0.8" d="M0,-10 Q2.2,-2.2 10,0 Q2.2,2.2 0,10 Q-2.2,2.2 -10,0 Q-2.2,-2.2 0,-10 Z"/><path transform="translate(540,60)" fill="#FFC96B" opacity="0.5" d="M0,-6 Q1.32,-1.32 6,0 Q1.32,1.32 0,6 Q-1.32,1.32 -6,0 Q-1.32,-1.32 0,-6 Z"/></g>
+<g transform="translate(650,220)">
+<rect width="600" height="190" rx="24" fill="#fff" stroke="#E6DEF7" stroke-width="2.5"/>
+<circle cx="76" cy="95" r="46" fill="#E6DEF7"/><rect x="58" y="82" width="36" height="30" rx="8" fill="none" stroke="#8E7CC3" stroke-width="4"/><path d="M66,82 v-8 a10,10 0 0 1 20,0 v8" fill="none" stroke="#8E7CC3" stroke-width="4"/>
+<text x="150" y="72" font-size="29" fill="#4A3F6B" font-weight="700" text-anchor="start" >S3 加密备份 · 恢复码</text>
+<text x="150" y="110" font-size="17" fill="#7A6F96" font-weight="normal" text-anchor="start" >AES-256-GCM + 不可变对象键 · 恢复前先预览</text><text x="150" y="138" font-size="17" fill="#7A6F96" font-weight="normal" text-anchor="start" >账号 / Cookie / API Key 永不进备份</text>
+<path transform="translate(560,36)" fill="#8E7CC3" opacity="0.8" d="M0,-10 Q2.2,-2.2 10,0 Q2.2,2.2 0,10 Q-2.2,2.2 -10,0 Q-2.2,-2.2 0,-10 Z"/><path transform="translate(540,60)" fill="#8E7CC3" opacity="0.5" d="M0,-6 Q1.32,-1.32 6,0 Q1.32,1.32 0,6 Q-1.32,1.32 -6,0 Q-1.32,-1.32 0,-6 Z"/></g>
+<path transform="translate(60,410) rotate(20) scale(0.9)" fill="#FF7EA5" opacity="0.4" d="M0,0 C6,-9 17,-7 15,4 C13,13 2,15 0,0 Z"/><path transform="translate(1220,60) rotate(-30) scale(1)" fill="#FF7EA5" opacity="0.4" d="M0,0 C6,-9 17,-7 15,4 C13,13 2,15 0,0 Z"/><path transform="translate(1230,410)" fill="#FFC96B" opacity="0.7" d="M0,-10 Q2.2,-2.2 10,0 Q2.2,2.2 0,10 Q-2.2,2.2 -10,0 Q-2.2,-2.2 0,-10 Z"/><path transform="translate(40,40)" fill="#6FC7F2" opacity="0.6" d="M0,-8 Q1.76,-1.76 8,0 Q1.76,1.76 0,8 Q-1.76,1.76 -8,0 Q-1.76,-1.76 0,-8 Z"/>
+</svg>
