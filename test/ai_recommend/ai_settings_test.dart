@@ -69,6 +69,16 @@ void main() {
     expect(tooLong.firstPaintBudgetMs, 5000);
   });
 
+  test('model timeout is 30 s and ignores the old 6 s default', () {
+    expect(
+      AiRecommendSettings.defaults.requestTimeoutMs,
+      AiRecommendSettings.defaultRequestTimeoutMs,
+    );
+    expect(AiRecommendSettings.defaultRequestTimeoutMs, 30000);
+    final legacy = AiRecommendSettings.fromMap({'requestTimeoutMs': 6000});
+    expect(legacy.requestTimeoutMs, 30000);
+  });
+
   test('private HTTP opt-in is explicit and persisted', () {
     expect(AiRecommendSettings.defaults.allowInsecureHttp, isFalse);
     final parsed = AiRecommendSettings.fromMap({'allowInsecureHttp': true});

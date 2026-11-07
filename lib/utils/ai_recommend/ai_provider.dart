@@ -46,7 +46,7 @@ class AiProviderConfig {
   const AiProviderConfig({
     required this.baseUrl,
     required this.model,
-    this.timeoutMs = 6000,
+    this.timeoutMs = 30000,
     this.jsonMode = true,
     this.allowInsecureHttp = false,
   });
@@ -206,8 +206,8 @@ class OpenAiCompatibleProvider implements AiProvider {
            dio ??
            Dio(
              BaseOptions(
-               connectTimeout: const Duration(seconds: 4),
-               sendTimeout: const Duration(seconds: 4),
+               connectTimeout: Duration(milliseconds: config.timeoutMs),
+               sendTimeout: Duration(milliseconds: config.timeoutMs),
                receiveTimeout: Duration(milliseconds: config.timeoutMs),
                responseType: ResponseType.plain,
                followRedirects: false,

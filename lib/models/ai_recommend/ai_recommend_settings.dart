@@ -49,7 +49,7 @@ class AiRecommendSettings {
     this.strictThreshold = 0.55,
     this.batchSize = 20,
     this.maxBatchesPerRefresh = 2,
-    this.requestTimeoutMs = 6000,
+    this.requestTimeoutMs = defaultRequestTimeoutMs,
     this.firstPaintBudgetMs = 2000,
     this.jsonMode = true,
     this.allowInsecureHttp = false,
@@ -104,6 +104,15 @@ class AiRecommendSettings {
   /// requests, so this exists to catch typos (a stray zero) rather than to
   /// mirror a provider limit.
   static const int maxDailyRequestBudget = 100000;
+
+  /// Whole-request budget for one model call: connect, send and receive all
+  /// share it. Thirty seconds covers a cold call to a reasoning model; the
+  /// previous 6 s default reported such a provider as “连接超时”.
+  ///
+  /// This is app policy rather than a preference: no screen writes it, so a
+  /// stored value left behind by the old default is ignored instead of
+  /// honoured (`copyWith` still overrides it for the prefetch paths).
+  static const int defaultRequestTimeoutMs = 30000;
 
   bool get hasModel => baseUrl.trim().isNotEmpty && model.trim().isNotEmpty;
 
@@ -182,7 +191,7 @@ class AiRecommendSettings {
       strictThreshold: doubleIn('strictThreshold', 0.55, 0.3, 0.95),
       batchSize: intIn('batchSize', 20, 5, 40),
       maxBatchesPerRefresh: intIn('maxBatchesPerRefresh', 2, 1, 3),
-      requestTimeoutMs: intIn('requestTimeoutMs', 6000, 2000, 30000),
+      requestTimeoutMs: defaultRequestTimeoutMs,
       // Measured against reasoning-capable models: a cold request commonly
       // takes 1.5 s, so 800 ms declared every such refresh unavailable before
       // the (successful) response landed. Two seconds keeps the first paint
