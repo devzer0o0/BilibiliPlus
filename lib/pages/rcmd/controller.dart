@@ -23,7 +23,6 @@ import 'package:PiliPlus/utils/shared_video_read_store.dart';
 import 'package:PiliPlus/utils/shared_video_service.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 
@@ -81,6 +80,10 @@ class RcmdController extends CommonListController {
   int _prefetchEpoch = 0;
   AiFeedSnapshotStore? _feedSnapshotStore;
   bool _feedRestored = false;
+  // The grid asks for "more" while it lays out the last cached tile, which at
+  // launch would turn into an immediate network request. Keep the restored page
+  // untouched until the user actually scrolls.
+  bool _restoredLoadMoreGate = false;
   final Set<String> _warmedCoverUrls = {};
 
   bool get aiEnabled {
@@ -141,41 +144,21 @@ class RcmdController extends CommonListController {
     final source = appRcmd ? 'app' : 'web';
     final accountHash = aiFeedFingerprint(_ai.recommendScope);
     final settingsHash = aiFeedFingerprint(_ai.settings.toJson());
-    debugPrint(
-      '[feed-restore] start aiEnabled=$aiEnabled appRcmd=$appRcmd '
-      'scope=${_ai.recommendScope} account=${accountHash.substring(0, 8)} '
-      'settings=${settingsHash.substring(0, 8)}',
-    );
     if (!aiEnabled) return false;
     final store = _snapshotStore;
-    if (store == null) {
-      debugPrint('[feed-restore] no store');
-      return false;
-    }
+    if (store == null) return false;
     final snapshot = store.read();
-    if (snapshot == null) {
-      debugPrint('[feed-restore] no snapshot');
-      return false;
-    }
-    debugPrint(
-      '[feed-restore] stored age=${DateTime.now().difference(snapshot.savedAt)} '
-      'account=${snapshot.accountHash.substring(0, 8)} '
-      'settings=${snapshot.settingsHash.substring(0, 8)} '
-      'source=${snapshot.source} status=${snapshot.status} '
-      'items=${snapshot.items.length}',
-    );
+    if (snapshot == null) return false;
     if (!snapshot.isUsable(
       now: DateTime.now(),
       accountHash: accountHash,
       settingsHash: settingsHash,
       source: source,
     )) {
-      debugPrint('[feed-restore] NOT usable');
       return false;
     }
     final visibleCards = snapshot.decodeCards(snapshot.items);
     if (visibleCards.isEmpty) {
-      debugPrint('[feed-restore] no decodable cards');
       return false;
     }
     final foldedCards = snapshot.decodeCards(snapshot.folded);
@@ -250,9 +233,13 @@ class RcmdController extends CommonListController {
       scores: scores,
     );
     _feedRestored = true;
+    _restoredLoadMoreGate = true;
+    // Restored cards are already one page; without this the first onLoadMore
+    // would see page == 0 and trigger a full refresh.
+    page = 1;
+    isEnd = false;
     _aiPaintedLength = display.length;
     loadingState.value = Success<List<BaseRcmdVideoItemModel>>(display);
-    debugPrint('[feed-restore] restored ${display.length} cards');
     return true;
   }
 
@@ -282,7 +269,6 @@ class RcmdController extends CommonListController {
     // page, launching costs no recommendation request at all. A refresh runs
     // only when nothing could be restored, or when the user pulls to refresh.
     final restored = _restoreFeedSnapshot();
-    debugPrint('[feed-restore] onInit restored=$restored');
     if (restored) {
       // Keep the AI session alive without a request so scrolling continues
       // through the pipeline instead of appending unscored upstream cards.
@@ -291,6 +277,17 @@ class RcmdController extends CommonListController {
       unawaited(queryData());
     }
     loadSharedVideos();
+  }
+
+  @override
+  Future<void> onLoadMore() {
+    if (_restoredLoadMoreGate) {
+      final atTop =
+          !scrollController.hasClients || scrollController.position.pixels <= 0;
+      if (atTop) return Future.value();
+      _restoredLoadMoreGate = false;
+    }
+    return super.onLoadMore();
   }
 
   Future<void> loadSharedVideos() async {
@@ -353,6 +350,7 @@ class RcmdController extends CommonListController {
     final token = _aiSession.begin();
     _aiToken = token;
     _aiTopUpUsed = 0;
+    _restoredLoadMoreGate = false;
     aiRestoredFolded.value = 0;
     aiNewRankingReady.value = false;
     aiBlockedReason.value = '';
